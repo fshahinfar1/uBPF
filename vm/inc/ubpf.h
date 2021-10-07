@@ -36,65 +36,67 @@ typedef uint64_t (*ubpf_jit_fn)(void *mem, size_t mem_len);
 struct ubpf_vm *ubpf_create(void);
 void ubpf_destroy(struct ubpf_vm *vm);
 
-/*
+/**
  * Enable / disable bounds_check
  *
  * Bounds check is enabled by default, but it may be too restrictive
- * Pass true to enable, false to disable
- * Returns previous state
+ * @param enable Pass true to enable, false to disable
+ * @return previous state
  */
 bool ubpf_toggle_bounds_check(struct ubpf_vm *vm, bool enable);
 
 
-/*
+/**
  * Set the function to be invoked if the jitted program hits divide by zero.
  *
  * fprintf is the default function to be invoked on division by zero.
  */
 void ubpf_set_error_print(struct ubpf_vm *vm, int (*error_printf)(FILE* stream, const char* format, ...));
 
-/*
+/**
  * Register an external function
  *
  * The immediate field of a CALL instruction is an index into an array of
  * functions registered by the user. This API associates a function with
  * an index.
  *
- * 'name' should be a string with a lifetime longer than the VM.
+ * @param idx associated index.
+ * @param name should be a string with a lifetime longer than the VM.
  *
- * Returns 0 on success, -1 on error.
+ * @return 0 on success, -1 on error.
  */
 int ubpf_register(struct ubpf_vm *vm, unsigned int idx, const char *name, void *fn);
 
-/*
+/**
  * Load code into a VM
  *
  * This must be done before calling ubpf_exec or ubpf_compile and after
  * registering all functions.
  *
- * 'code' should point to eBPF bytecodes and 'code_len' should be the size in
- * bytes of that buffer.
+ * @param code should point to eBPF bytecodes
+ * @param code_len should be the size in bytes of that buffer.
  *
- * Returns 0 on success, -1 on error. In case of error a pointer to the error
+ * @return 0 on success, -1 on error. In case of error a pointer to the error
  * message will be stored in 'errmsg' and should be freed by the caller.
  */
 int ubpf_load(struct ubpf_vm *vm, const void *code, uint32_t code_len, char **errmsg);
 
-/*
+/**
  * Load code from an ELF file
  *
  * This must be done before calling ubpf_exec or ubpf_compile and after
  * registering all functions.
  *
- * 'elf' should point to a copy of an ELF file in memory and 'elf_len' should
- * be the size in bytes of that buffer.
+ * @param elf should point to a copy of an ELF file in memory
+ * @param elf_len should be the size in bytes of that buffer.
  *
  * The ELF file must be 64-bit little-endian with a single text section
  * containing the eBPF bytecodes. This is compatible with the output of
  * Clang.
  *
- * Returns 0 on success, -1 on error. In case of error a pointer to the error
- * message will be stored in 'errmsg' and should be freed by the caller.
+ * @return 0 on success, -1 on error.
+ * In case of error a pointer to the error message will be stored in 'errmsg'
+ * and should be freed by the caller.
  */
 int ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_len, char **errmsg);
 
@@ -102,13 +104,17 @@ int ubpf_exec(const struct ubpf_vm *vm, void *mem, size_t mem_len, uint64_t* bpf
 
 ubpf_jit_fn ubpf_compile(struct ubpf_vm *vm, char **errmsg);
 
-/*
+/**
  * Translate the eBPF byte code to x64 machine code, store in buffer, and 
  * write the resulting count of bytes to size.
  *
  * This must be called after registering all functions.
  *
- * Returns 0 on success, -1 on error. In case of error a pointer to the error
+ * @param buffer translated x64 machine code will be written to this buffer
+ * @param size The length of the buffer is passed in. When functions returns,
+ * number of bytes writen to the buffer is stored here.
+ *
+ * @returns 0 on success, -1 on error. In case of error a pointer to the error
  * message will be stored in 'errmsg' and should be freed by the caller.
  */
 int ubpf_translate(struct ubpf_vm *vm, uint8_t *buffer, size_t *size, char **errmsg);
@@ -118,7 +124,8 @@ int ubpf_translate(struct ubpf_vm *vm, uint8_t *buffer, size_t *size, char **err
  * function. If the function returns 0, the uBPF runtime will end execution of
  * the eBPF program and immediately return control to the caller. This is used
  * for implementing function like the "bpf_tail_call" helper. 
- * Returns 0 on success, -1 on if there is already an unwind helper set.
+ *
+ * @returns 0 on success, -1 on if there is already an unwind helper set.
  */
 int ubpf_set_unwind_function_index(struct ubpf_vm *vm, unsigned int idx);
 

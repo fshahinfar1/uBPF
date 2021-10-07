@@ -115,3 +115,4 @@ dmypy.json
 .pyre/
 
 doxygen_output/
+*.swp
