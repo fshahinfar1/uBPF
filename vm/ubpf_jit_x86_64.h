@@ -242,6 +242,19 @@ emit_cmp(struct jit_state *state, int src, int dst)
 {
     emit_alu64(state, 0x39, src, dst);
 }
+ 
+
+static inline void
+emit_cmp32_imm32(struct jit_state *state, int dst, int32_t imm)
+{
+    emit_alu32_imm32(state, 0x81, 7, dst, imm);
+}
+
+static inline void
+emit_cmp32(struct jit_state *state, int src, int dst)
+{
+    emit_alu32(state, 0x39, src, dst);
+}
 
 static inline void
 emit_jcc(struct jit_state *state, int code, int32_t target_pc)
@@ -346,6 +359,54 @@ emit_jmp(struct jit_state *state, uint32_t target_pc)
 {
     emit1(state, 0xe9);
     emit_jump_offset(state, target_pc);
+}
+
+static inline void
+emit_atomic(struct jit_state *state,
+        __attribute__((unused)) enum operand_size size, int src, int dst,
+        int32_t offset, int32_t imm)
+{
+    emit1(state, 0xf0); /* lock prefix */
+    emit_basic_rex(state, size == S64, src, dst);
+
+
+    /* emit opcode */
+    switch (imm) {
+        case BPF_ADD:
+            /* lock *(u32/u64*)(dst_reg + off) <op>= src_reg */
+            emit1(state, 0x01);
+            break;
+        case BPF_SUB:
+            /* lock *(u32/u64*)(dst_reg + off) <op>= src_reg */
+            emit1(state, 0x29);
+            break;
+        case BPF_AND:
+            /* lock *(u32/u64*)(dst_reg + off) <op>= src_reg */
+            emit1(state, 0x21);
+            break;
+        case BPF_OR:
+            /* lock *(u32/u64*)(dst_reg + off) <op>= src_reg */
+            emit1(state, 0x09);
+            break;
+        case BPF_XOR:
+            /* lock *(u32/u64*)(dst_reg + off) <op>= src_reg */
+            emit1(state, 0x31);
+            break;
+        case BPF_ADD | BPF_FETCH:
+            /* src_reg = atomic_fetch_add(dst_reg + off, src_reg); */
+            emit2(state, 0xc10f);
+            break;
+        case BPF_XCHG:
+            /* src_reg = atomic_xchg(dst_reg + off, src_reg); */
+            emit1(state, 0x87);
+            break;
+        case BPF_CMPXCHG:
+            /* r0 = atomic_cmpxchg(dst_reg + off, r0, src_reg); */
+            emit2(state, 0xb10f);
+            break;
+    }
+
+    emit_modrm_and_displacement(state, src, dst, offset);
 }
 
 #endif

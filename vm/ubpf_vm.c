@@ -711,6 +711,29 @@ validate(const struct ubpf_vm *vm, const struct ebpf_inst *insts, uint32_t num_i
         case EBPF_OP_JSLT_REG:
         case EBPF_OP_JSLE_IMM:
         case EBPF_OP_JSLE_REG:
+        /* JMP32 */
+        case EBPF_OP_JEQ32_REG:
+        case EBPF_OP_JEQ32_IMM:
+        case EBPF_OP_JGT32_REG:
+        case EBPF_OP_JGT32_IMM:
+        case EBPF_OP_JGE32_REG:
+        case EBPF_OP_JGE32_IMM:
+        case EBPF_OP_JLT32_REG:
+        case EBPF_OP_JLT32_IMM:
+        case EBPF_OP_JLE32_REG:
+        case EBPF_OP_JLE32_IMM:
+        case EBPF_OP_JSET32_REG:
+        case EBPF_OP_JSET32_IMM:
+        case EBPF_OP_JNE32_REG:
+        case EBPF_OP_JNE32_IMM:
+        case EBPF_OP_JSGT32_IMM:
+        case EBPF_OP_JSGT32_REG:
+        case EBPF_OP_JSGE32_IMM:
+        case EBPF_OP_JSGE32_REG:
+        case EBPF_OP_JSLT32_IMM:
+        case EBPF_OP_JSLT32_REG:
+        case EBPF_OP_JSLE32_IMM:
+        case EBPF_OP_JSLE32_REG:
             if (inst.offset == -1) {
                 *errmsg = ubpf_error("infinite loop at PC %d", i);
                 return false;
@@ -747,6 +770,11 @@ validate(const struct ubpf_vm *vm, const struct ebpf_inst *insts, uint32_t num_i
                 *errmsg = ubpf_error("division by zero at PC %d", i);
                 return false;
             }
+            break;
+
+        /* Atomic Operations */
+        case EBPF_OP_AT_4:
+        case EBPF_OP_AT_8:
             break;
 
         default:
