@@ -1,0 +1,30 @@
+install `parcon`
+
+```
+git clone <parcon-repository-path>
+cd parcon
+pip install .
+# pip install parcon: it is an old version of parcon not working with py3
+```
+
+install `nose`
+
+```
+pip install nose
+```
+
+install elftools
+
+```
+sudo apt install python3-pyelftools
+```
+
+run the tests using `nosetests` from the `uBPF/`.
+You should have built the vm director.
+`S` in the output meanse the test was skipped.
+Turn on verbose mode for seeing why it was skipped.
+
+```
+nosetests test_framework/
+```
+
