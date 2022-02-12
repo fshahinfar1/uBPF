@@ -44,6 +44,7 @@ struct ebpf_inst {
 #define EBPF_CLS_MASK 0x07
 #define EBPF_ALU_OP_MASK 0xf0
 
+#define EBPF_CLASS(opcode) ((opcode) & EBPF_CLS_MASK)
 #define EBPF_CLS_LD 0x00
 #define EBPF_CLS_LDX 0x01
 #define EBPF_CLS_ST 0x02
@@ -53,9 +54,11 @@ struct ebpf_inst {
 #define EBPF_CLS_JMP32 0x06
 #define EBPF_CLS_ALU64 0x07
 
+#define EBPF_SRC(opcode) ((opcode) & 0x08)
 #define EBPF_SRC_IMM 0x00
 #define EBPF_SRC_REG 0x08
 
+#define EBPF_SIZE(opcode) ((opcode) & 0x18)
 #define EBPF_SIZE_W 0x00
 #define EBPF_SIZE_H 0x08
 #define EBPF_SIZE_B 0x10
@@ -63,8 +66,37 @@ struct ebpf_inst {
 
 /* Other memory modes are not yet supported */
 #define EBPF_MODE_IMM 0x00
+#define EBPF_MODE_ABS 0x20
+#define EBPF_MODE_IND 0x40
 #define EBPF_MODE_MEM 0x60
 #define EBPF_MODE_ATOMIC 0xc0
+
+#define EBPF_OP(opcode) ((opcode) & 0xf0)
+#define EBPF_ALU_ADD 0x00
+#define EBPF_ALU_SUB 0x10
+#define EBPF_ALU_MUL 0x20
+#define EBPF_ALU_DIV 0x30
+#define EBPF_ALU_OR 0x40
+#define EBPF_ALU_AND 0x50
+#define EBPF_ALU_LSH 0x60
+#define EBPF_ALU_RSH 0x70
+#define EBPF_ALU_NEG 0x80
+#define EBPF_ALU_MOD 0x90
+#define EBPF_ALU_XOR 0xa0
+#define EBPF_ALU_MOV 0xb0
+#define EBPF_ALU_ARSH 0xc0
+#define EBPF_ALU_END 0xd0
+
+#define EBPF_JMP_JA 0x00
+#define EBPF_JMP_JEQ 0x10
+#define EBPF_JMP_JGT 0x20
+#define EBPF_JMP_JGE 0x30
+#define EBPF_JMP_JSET 0x40
+#define EBPF_JMP_JNE 0x50
+#define EBPF_JMP_JSGT 0x60
+#define EBPF_JMP_JSGE 0x70
+#define EBPF_JMP_CALL 0x80
+#define EBPF_JMP_EXIT 0x90
 
 #define EBPF_OP_ADD_IMM  (EBPF_CLS_ALU|EBPF_SRC_IMM|0x00)
 #define EBPF_OP_ADD_REG  (EBPF_CLS_ALU|EBPF_SRC_REG|0x00)
@@ -119,6 +151,16 @@ struct ebpf_inst {
 #define EBPF_OP_MOV64_REG  (EBPF_CLS_ALU64|EBPF_SRC_REG|0xb0)
 #define EBPF_OP_ARSH64_IMM (EBPF_CLS_ALU64|EBPF_SRC_IMM|0xc0)
 #define EBPF_OP_ARSH64_REG (EBPF_CLS_ALU64|EBPF_SRC_REG|0xc0)
+
+/* Load ABS or IND */
+#define EBPF_OP_LDABSB  (EBPF_CLS_LD|EBPF_MODE_ABS|EBPF_SIZE_B)
+#define EBPF_OP_LDABSH  (EBPF_CLS_LD|EBPF_MODE_ABS|EBPF_SIZE_H)
+#define EBPF_OP_LDABSW  (EBPF_CLS_LD|EBPF_MODE_ABS|EBPF_SIZE_W)
+#define EBPF_OP_LDABSDW  (EBPF_CLS_LD|EBPF_MODE_ABS|EBPF_SIZE_DW)
+#define EBPF_OP_LDINDB  (EBPF_CLS_LD|EBPF_MODE_IND|EBPF_SIZE_B)
+#define EBPF_OP_LDINDH  (EBPF_CLS_LD|EBPF_MODE_IND|EBPF_SIZE_H)
+#define EBPF_OP_LDINDW  (EBPF_CLS_LD|EBPF_MODE_IND|EBPF_SIZE_W)
+#define EBPF_OP_LDINDDW (EBPF_CLS_LD|EBPF_MODE_IND|EBPF_SIZE_DW)
 
 #define EBPF_OP_LDXW  (EBPF_CLS_LDX|EBPF_MODE_MEM|EBPF_SIZE_W)
 #define EBPF_OP_LDXH  (EBPF_CLS_LDX|EBPF_MODE_MEM|EBPF_SIZE_H)

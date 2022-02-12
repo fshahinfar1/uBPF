@@ -66,6 +66,8 @@ struct jit_state {
     int num_jumps;
 };
 
+void ubpf_set_register_offset(int x);
+
 static inline void
 emit_bytes(struct jit_state *state, void *data, uint32_t len)
 {

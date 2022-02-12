@@ -105,7 +105,7 @@ int main(int argc, char **argv)
 
     register_functions(vm);
 
-    /* 
+    /*
      * The ELF magic corresponds to an RSH instruction with an offset,
      * which is invalid.
      */
@@ -114,9 +114,9 @@ int main(int argc, char **argv)
     char *errmsg;
     int rv;
     if (elf) {
-	rv = ubpf_load_elf(vm, code, code_len, &errmsg);
+        rv = ubpf_load_elf(vm, code, code_len, &errmsg);
     } else {
-	rv = ubpf_load(vm, code, code_len, &errmsg);
+        rv = ubpf_load(vm, code, code_len, &errmsg);
     }
 
     free(code);

@@ -27,6 +27,10 @@
 #include "ubpf_int.h"
 #include "ubpf_jit_x86_64.h"
 
+/* Special valus for target_pc in struct jump */
+#define TARGET_PC_EXIT -1
+#define TARGET_PC_DIV_BY_ZERO -2
+
 #if !defined(_countof)
 #define _countof(array) (sizeof(array) / sizeof(array[0]))
 #endif
@@ -529,6 +533,39 @@ translate(struct ubpf_vm *vm, struct jit_state *state, char **errmsg)
         case EBPF_OP_JSLE32_REG:
             emit_cmp32(state, src, dst);
             emit_jcc(state, 0x8e, target_pc);
+            break;
+        /* ABS or IND load (Oko) */
+        case EBPF_OP_LDABSB:
+            emit_load(state, S8,  R10, RAX, inst.imm);
+            break;
+        case EBPF_OP_LDABSH:
+            emit_load(state, S16, R10, RAX, inst.imm);
+            break;
+        case EBPF_OP_LDABSW:
+            emit_load(state, S32, R10, RAX, inst.imm);
+            break;
+        case EBPF_OP_LDABSDW:
+            emit_load(state, S64, R10, RAX, inst.imm);
+            break;
+        case EBPF_OP_LDINDB:
+            emit_mov(state, R10, R11);
+            emit_alu64(state, 0x01, src, R11);
+            emit_load(state, S8,  R11, RAX, inst.imm);
+            break;
+        case EBPF_OP_LDINDH:
+            emit_mov(state, R10, R11);
+            emit_alu64(state, 0x01, src, R11);
+            emit_load(state, S16, R11, RAX, inst.imm);
+            break;
+        case EBPF_OP_LDINDW:
+            emit_mov(state, R10, R11);
+            emit_alu64(state, 0x01, src, R11);
+            emit_load(state, S32, R11, RAX, inst.imm);
+            break;
+        case EBPF_OP_LDINDDW:
+            emit_mov(state, R10, R11);
+            emit_alu64(state, 0x01, src, R11);
+            emit_load(state, S64, R11, RAX, inst.imm);
             break;
 
         case EBPF_OP_LDXW:

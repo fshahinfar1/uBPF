@@ -24,7 +24,54 @@
 #include <sys/mman.h>
 #include "ubpf_int.h"
 
+/* From Oko: definitions */
 #define MAX_EXT_FUNCS 64
+#define MAX_EXT_MAPS 64
+#define NB_REGS 11
+
+#ifndef MIN
+#define MIN(X, Y) ((X) < (Y) ? (X) : (Y))
+#endif
+#ifndef MAX
+#define MAX(X, Y) ((X) > (Y) ? (X) : (Y))
+#endif
+
+#define REGISTER_MAX_RANGE (1024 * 1024 * 1024)
+#define REGISTER_MIN_RANGE -(1024 * 1024)
+
+/* struct bpf_reg_state { */
+/*     enum ubpf_reg_type type; */
+/*     struct ubpf_map *map; */
+/*     int64_t min_val; */
+/*     uint64_t max_val; */
+/* }; */
+
+/* struct bpf_state { */
+/*     struct ovs_list node; */
+/*     struct bpf_reg_state regs[NB_REGS]; */
+/*     struct bpf_reg_state stack[STACK_SIZE]; */
+/*     uint32_t instno; */
+/*     uint64_t pkt_range; */
+/* }; */
+
+/* enum vertex_status { */
+/*     UNDISCOVERED = 0, */
+/*     DISCOVERED, */
+/*     EXPLORED, */
+/* }; */
+
+/* enum edge_status { */
+/*     UNLABELED = 0, */
+/*     BRANCH1_LABELED = 1, */
+/*     BRANCH2_LABELED = 2, */
+/* }; */
+
+/* enum access_type { */
+/*     READ = 0, */
+/*     WRITE, */
+/* }; */
+
+/* ------------------------------- */
 
 static bool validate(const struct ubpf_vm *vm, const struct ebpf_inst *insts, uint32_t num_insts, char **errmsg);
 static bool bounds_check(const struct ubpf_vm *vm, void *addr, int size, const char *type, uint16_t cur_pc, void *mem, size_t mem_len, void *stack);
@@ -96,6 +143,21 @@ ubpf_register(struct ubpf_vm *vm, unsigned int idx, const char *name, void *fn)
     return 0;
 }
 
+/* From Oko project */
+int
+ubpf_register_map(struct ubpf_vm *vm, const char *name, struct ubpf_map *map)
+{
+    unsigned int idx = vm->nb_maps;
+    if (idx >= MAX_EXT_MAPS) {
+        return -1;
+    }
+    vm->ext_maps[idx] = map;
+    vm->ext_map_names[idx] = name;
+    vm->nb_maps++;
+    return 0;
+}
+/* ----------------- */
+
 int ubpf_set_unwind_function_index(struct ubpf_vm *vm, unsigned int idx)
 {
     if (vm->unwind_stack_extension_index != -1) {
@@ -118,6 +180,21 @@ ubpf_lookup_registered_function(struct ubpf_vm *vm, const char *name)
     }
     return -1;
 }
+
+/* From Oko project */
+struct ubpf_map *
+ubpf_lookup_registered_map(struct ubpf_vm *vm, const char *name)
+{
+    int i;
+    for (i = 0; i < MAX_EXT_MAPS; i++) {
+        const char *other = vm->ext_map_names[i];
+        if (other && !strcmp(other, name)) {
+            return vm->ext_maps[i];
+        }
+    }
+    return NULL;
+}
+/* ---------------- */
 
 int
 ubpf_load(struct ubpf_vm *vm, const void *code, uint32_t code_len, char **errmsg)
@@ -156,7 +233,7 @@ u32(uint64_t x)
     return x;
 }
 
-int 
+int
 ubpf_exec(const struct ubpf_vm *vm, void *mem, size_t mem_len, uint64_t* bpf_return_value)
 {
     uint16_t pc = 0;
