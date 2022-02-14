@@ -24,6 +24,12 @@
 #include "ubpf_int.h"
 #include <elf.h>
 
+/* Include maps */
+#include "maps/ubpf_array.h"
+#include "maps/ubpf_bf.h"
+#include "maps/ubpf_countmin.h"
+#include "maps/ubpf_hashmap.h"
+
 #define MAX_SECTIONS 32
 
 #ifndef EM_BPF
@@ -50,11 +56,52 @@ bounds_check(struct bounds *bounds, uint64_t offset, uint64_t size)
     return bounds->base + offset;
 }
 
+static int
+initiate_map_obj(struct ubpf_map *map,  const struct ubpf_map_def *map_def,
+        char **errmsg)
+{
+
+    map->type = map_def->type;
+    map->key_size = map_def->key_size;
+    map->value_size = map_def->value_size;
+    map->max_entries = map_def->max_entries;
+
+    switch(map_def->type) {
+        case UBPF_MAP_TYPE_ARRAY:
+            map->ops = ubpf_array_ops;
+            map->data = ubpf_array_create(map_def);
+            break;
+        case UBPF_MAP_TYPE_BLOOMFILTER:
+            map->ops = ubpf_bf_ops;
+            map->data = ubpf_bf_create(map_def);
+            break;
+        case UBPF_MAP_TYPE_COUNTMIN:
+            map->ops = ubpf_countmin_ops;
+            map->data = ubpf_countmin_create(map_def);
+            break;
+        case UBPF_MAP_TYPE_HASHMAP:
+            map->ops = ubpf_hashmap_ops;
+            map->data = ubpf_hashmap_create(map_def);
+            break;
+        default:
+            *errmsg = ubpf_error("unrecognized map type: %d", map_def->type);
+            return -1;
+    }
+
+    if (!map->data) {
+        *errmsg = ubpf_error("failed to allocate memory");
+        return -1;
+    }
+    return 0;
+}
+
 int
 ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errmsg)
 {
     struct bounds b = { .base=elf, .size=elf_size };
     void *text_copy = NULL;
+    void *str_copy = NULL;
+    struct ubpf_map *map = NULL;
     int i;
 
     const Elf64_Ehdr *ehdr = bounds_check(&b, 0, sizeof(*ehdr));
@@ -142,12 +189,47 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
 
     struct section *text = &sections[text_shndx];
 
+    /* Oko project */
+    /* Find first .data section */
+    int data_shndx = 0;
+    for (i = 0; i < ehdr->e_shnum; i++) {
+        const Elf64_Shdr *shdr = sections[i].shdr;
+        if (shdr->sh_type == SHT_PROGBITS &&
+                shdr->sh_flags == (SHF_ALLOC|SHF_WRITE)) {
+            data_shndx = i;
+            break;
+        }
+    }
+    struct section *data = NULL;
+    if (data_shndx) {
+        data = &sections[data_shndx];
+    }
+
+    /* Find first .rodata.str section if any. */
+    int str_shndx = 0;
+    for (i = 0; i < ehdr->e_shnum; i++) {
+        const Elf64_Shdr *shdr = sections[i].shdr;
+        if (shdr->sh_type == SHT_PROGBITS &&
+                shdr->sh_flags == (SHF_ALLOC|SHF_MERGE|SHF_STRINGS)) {
+            str_shndx = i;
+            break;
+        }
+    }
+    struct section *str = NULL;
+    if (str_shndx) {
+        str = &sections[str_shndx];
+
+        /* May need to modify text for relocations, so make a copy */
+        str_copy = malloc(str->size);
+        if (!str_copy) {
+            *errmsg = ubpf_error("failed to allocate memory");
+            goto error;
+        }
+        memcpy(str_copy, str->data, str->size);
+    }
+
     /* May need to modify text for relocations, so make a copy */
     text_copy = malloc(text->size);
-    if (!text_copy) {
-        *errmsg = ubpf_error("failed to allocate memory");
-        goto error;
-    }
     memcpy(text_copy, text->data, text->size);
 
     /* Process each relocation section */
@@ -182,7 +264,13 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
         for (j = 0; j < rel->size/sizeof(Elf64_Rel); j++) {
             const Elf64_Rel *r = &rs[j];
 
-            if (ELF64_R_TYPE(r->r_info) != 2) {
+            /* if (ELF64_R_TYPE(r->r_info) != 2) { */
+            /*     *errmsg = ubpf_error("bad relocation type %u", ELF64_R_TYPE(r->r_info)); */
+            /*     goto error; */
+            /* } */
+            /* *(uint32_t *)(text_copy + r->r_offset + 4) = imm; */
+
+            if (ELF64_R_TYPE(r->r_info) != ET_EXEC && ELF64_R_TYPE(r->r_info) != ET_REL) {
                 *errmsg = ubpf_error("bad relocation type %u", ELF64_R_TYPE(r->r_info));
                 goto error;
             }
@@ -207,13 +295,84 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
                 goto error;
             }
 
-            unsigned int imm = ubpf_lookup_registered_function(vm, sym_name);
-            if (imm == -1) {
-                *errmsg = ubpf_error("function '%s' not found", sym_name);
-                goto error;
-            }
+            /* unsigned int imm = ubpf_lookup_registered_function(vm, sym_name); */
+            /* if (imm == -1) { */
+            /*     *errmsg = ubpf_error("function '%s' not found", sym_name); */
+            /*     goto error; */
+            /* } */
 
-            *(uint32_t *)(text_copy + r->r_offset + 4) = imm;
+            /* Oko resolves the map relocations */
+            switch(ELF64_R_TYPE(r->r_info)) {
+                case 1:
+                {
+                    /* This a MAP relocation */
+                    int sym_shndx = sym->st_shndx;
+                    if (sym_shndx == data_shndx) {
+                        if (!data_shndx) {
+                            *errmsg = ubpf_error("missing data section");
+                            goto error;
+                        }
+
+                        map = ubpf_lookup_registered_map(vm, sym_name);
+                        if(!map) {
+                            /* If map not registered */
+                            uint64_t sym_data_offset = sym->st_value;
+                            if (sym_data_offset + sizeof(struct ubpf_map_def) > data->size) {
+                                *errmsg = ubpf_error("bad data offset");
+                                goto error;
+                            }
+                            const struct ubpf_map_def *map_def = (void *)((uint64_t)data->data + sym_data_offset);
+
+                            map = malloc(sizeof(struct ubpf_map));
+                            if (initiate_map_obj(map, map_def, errmsg)) {
+                                goto error_map;
+                            };
+
+                            int result = ubpf_register_map(vm, sym_name, map);
+                            if (result == -1) {
+                                *errmsg = ubpf_error("failed to register variable '%s'", sym_name);
+                                goto error_map;
+                            }
+                        }
+
+                        *(uint32_t *)((uint64_t)text_copy + r->r_offset + 4) = (uint32_t)((uint64_t)map);
+                        *(uint32_t *)((uint64_t)text_copy + r->r_offset + sizeof(struct ebpf_inst) + 4) = (uint32_t)((uint64_t)map >> 32);
+
+                    } else if (sym_shndx == str_shndx) {
+                        if (!str_shndx) {
+                            *errmsg = ubpf_error("missing string section");
+                            goto error;
+                        }
+
+                        uint64_t sym_data_offset = sym->st_value;
+                        const char *string = (void *)((uint64_t)str_copy + sym_data_offset);
+                        size_t str_len = strlen(string);
+                        if (sym_data_offset + str_len > str->size) {
+                            *errmsg = ubpf_error("bad data offset");
+                            goto error;
+                        }
+
+                        *(uint32_t *)((uint64_t)text_copy + r->r_offset + 4) = (uint32_t)((uint64_t)string);
+                        *(uint32_t *)((uint64_t)text_copy + r->r_offset + sizeof(struct ebpf_inst) + 4) = (uint32_t)((uint64_t)string >> 32);
+                    }
+                    break;
+                }
+
+                case 2:
+                {
+                    unsigned int imm = ubpf_lookup_registered_function(vm, sym_name);
+                    if (imm == -1) {
+                        *errmsg = ubpf_error("function '%s' not found", sym_name);
+                        goto error;
+                    }
+
+                    *(uint32_t *)((uint64_t)text_copy + r->r_offset + 4) = imm;
+
+                    break;
+                }
+
+                default: ;
+            }
         }
     }
 
@@ -221,6 +380,8 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
     free(text_copy);
     return rv;
 
+error_map:
+    free(map);
 error:
     free(text_copy);
     return -1;

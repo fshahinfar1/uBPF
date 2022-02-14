@@ -33,6 +33,8 @@
 struct ubpf_vm;
 typedef uint64_t (*ubpf_jit_fn)(void *mem, size_t mem_len);
 
+struct ubpf_map;
+
 struct ubpf_vm *ubpf_create(void);
 void ubpf_destroy(struct ubpf_vm *vm);
 
@@ -66,6 +68,16 @@ void ubpf_set_error_print(struct ubpf_vm *vm, int (*error_printf)(FILE* stream, 
  * @return 0 on success, -1 on error.
  */
 int ubpf_register(struct ubpf_vm *vm, unsigned int idx, const char *name, void *fn);
+
+/**
+* Register an external variable.
+*
+* @param name should be a string with a lifetime longer than the VM.
+*
+* @return 0 on success, -1 on error.
+*/
+int ubpf_register_map(struct ubpf_vm *vm, const char *name, struct ubpf_map *map);
+
 
 /**
  * Load code into a VM
@@ -105,7 +117,7 @@ int ubpf_exec(const struct ubpf_vm *vm, void *mem, size_t mem_len, uint64_t* bpf
 ubpf_jit_fn ubpf_compile(struct ubpf_vm *vm, char **errmsg);
 
 /**
- * Translate the eBPF byte code to x64 machine code, store in buffer, and 
+ * Translate the eBPF byte code to x64 machine code, store in buffer, and
  * write the resulting count of bytes to size.
  *
  * This must be called after registering all functions.
@@ -123,7 +135,7 @@ int ubpf_translate(struct ubpf_vm *vm, uint8_t *buffer, size_t *size, char **err
  * Instruct the uBPF runtime to apply unwind-on-success semantics to a helper
  * function. If the function returns 0, the uBPF runtime will end execution of
  * the eBPF program and immediately return control to the caller. This is used
- * for implementing function like the "bpf_tail_call" helper. 
+ * for implementing function like the "bpf_tail_call" helper.
  *
  * @returns 0 on success, -1 on if there is already an unwind helper set.
  */
@@ -131,7 +143,7 @@ int ubpf_set_unwind_function_index(struct ubpf_vm *vm, unsigned int idx);
 
 /**
  * Returns the byte representation of jitted function
- * @param vm 
+ * @param vm
  * @param size this value is set to the number of bytes the returned buffer has
  * @returns
  */
