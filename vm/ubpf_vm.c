@@ -111,6 +111,22 @@ ubpf_create(void)
         return NULL;
     }
 
+    /* Initialize for userspace map */
+    vm->ext_maps = calloc(MAX_EXT_MAPS, sizeof(*vm->ext_maps));
+    if (vm->ext_maps == NULL) {
+        ubpf_destroy(vm);
+        return NULL;
+    }
+
+    vm->ext_map_names = calloc(MAX_EXT_MAPS, sizeof(*vm->ext_map_names));
+    if (vm->ext_map_names == NULL) {
+        ubpf_destroy(vm);
+        return NULL;
+    }
+
+    vm->nb_maps = 0;
+    /* ------------------------- */
+
     vm->bounds_check_enabled = true;
     vm->error_printf = fprintf;
 
