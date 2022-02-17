@@ -58,14 +58,6 @@ struct hmap_elem {
     char key[0] OVS_ALIGNED_VAR(8);
 };
 
-static const struct ubpf_map_ops ubpf_hashmap_ops = {
-    .map_size = ubpf_hashmap_size,
-    .map_dump = ubpf_hashmap_dump,
-    .map_lookup = ubpf_hashmap_lookup,
-    .map_update = ubpf_hashmap_update,
-    .map_delete = ubpf_hashmap_delete,
-    .map_add = NULL,
-};
 
 #define BPF_KEY_IS_HASH 1
 
@@ -214,5 +206,14 @@ ubpf_hashmap_delete(struct ubpf_map *map, const void *key)
 
     return 0;
 }
+
+static const struct ubpf_map_ops ubpf_hashmap_ops = {
+    .map_size = ubpf_hashmap_size,
+    .map_dump = ubpf_hashmap_dump,
+    .map_lookup = ubpf_hashmap_lookup,
+    .map_update = ubpf_hashmap_update,
+    .map_delete = ubpf_hashmap_delete,
+    .map_add = NULL,
+};
 
 #endif

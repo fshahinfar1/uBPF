@@ -60,7 +60,6 @@ static int
 initiate_map_obj(struct ubpf_map *map,  const struct ubpf_map_def *map_def,
         char **errmsg)
 {
-
     map->type = map_def->type;
     map->key_size = map_def->key_size;
     map->value_size = map_def->value_size;
