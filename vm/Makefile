@@ -43,6 +43,7 @@ install:
 	$(INSTALL) -m 644 libubpf.a $(DESTDIR)$(PREFIX)/lib
 	$(INSTALL) -d $(DESTDIR)$(PREFIX)/include
 	$(INSTALL) -m 644 inc/ubpf.h $(DESTDIR)$(PREFIX)/include
+	$(INSTALL) -m 644 inc/ubpf_maps.h $(DESTDIR)$(PREFIX)/include
 
 clean:
 	rm -f test libubpf.a *.o

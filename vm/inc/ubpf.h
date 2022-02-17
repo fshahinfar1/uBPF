@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "ubpf_maps.h"
 
 // Default values for maximum instruction count and stack size.
 #if !defined(UBPF_MAX_INSTS)
@@ -32,8 +33,6 @@
 
 struct ubpf_vm;
 typedef uint64_t (*ubpf_jit_fn)(void *mem, size_t mem_len);
-
-struct ubpf_map;
 
 struct ubpf_vm *ubpf_create(void);
 void ubpf_destroy(struct ubpf_vm *vm);
