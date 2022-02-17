@@ -54,6 +54,15 @@ def read(name):
             fullpath = os.path.join(_test_data_dir, os.path.dirname(name), path)
             with open(fullpath) as f:
                 data[section] = f.read()
+        if ':::' in k:
+            # The path to this file is important
+            del data[k]
+            section, path = k.split(':::')
+            section = section.strip()
+            path = path.strip()
+            fullpath = os.path.join(_test_data_dir, os.path.dirname(name), path)
+            fullpath = os.path.abspath(fullpath)
+            data[section] = fullpath
 
     # Special case: convert 'raw' section into binary
     # Each line is parsed as an integer representing an instruction.

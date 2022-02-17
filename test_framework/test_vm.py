@@ -2,11 +2,14 @@ import os
 import tempfile
 import struct
 import re
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, run
 from nose.plugins.skip import Skip, SkipTest
 import ubpf.assembler
 import testdata
 VM = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "vm", "test")
+COMPILE_SCRIPT = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+        "./compile.sh")
+
 
 def check_datafile(filename):
     """
@@ -14,17 +17,33 @@ def check_datafile(filename):
     verify that the result matches.
     """
     data = testdata.read(filename)
-    if 'asm' not in data and 'raw' not in data:
+    if 'asm' not in data and 'raw' not in data and 'c_prog' not in data:
         raise SkipTest("no asm or raw section in datafile")
     if 'result' not in data and 'error' not in data and 'error pattern' not in data:
         raise SkipTest("no result or error section in datafile")
     if not os.path.exists(VM):
         raise SkipTest("VM not found")
 
+    compiling = False
+
     if 'raw' in data:
         code = b''.join(struct.pack("=Q", x) for x in data['raw'])
-    else:
+    elif 'asm' in data:
         code = ubpf.assembler.assemble(data['asm'])
+    else:
+        compiling = True
+        # C Program
+        # prog = G
+        c_file_path = data['c_prog']
+        compile_command = f'bash {COMPILE_SCRIPT} {c_file_path}'
+        run(compile_command, shell=True)
+        # NOTE: Hopefully I have compiled the c program and the binary is
+        path = os.path.dirname(c_file_path)
+        base = os.path.basename(c_file_path)
+        name = os.path.splitext(base)[0] + '.o'
+        binary = os.path.join(path, name)
+        # print('binary path:', binary)
+        # raise SkipTest('Not compiling')
 
     memfile = None
 
@@ -35,11 +54,20 @@ def check_datafile(filename):
         memfile.flush()
         cmd.extend(['-m', memfile.name])
 
-    cmd.append('-')
+    if not compiling:
+        cmd.append('-')
+    else:
+        # bianry path should be set
+        cmd.append(binary)
 
+
+    # print(cmd)
     vm = Popen(cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE)
 
-    stdout, stderr = vm.communicate(code)
+    if not compiling:
+        stdout, stderr = vm.communicate(code)
+    else:
+        stdout, stderr = vm.communicate()
     stdout = stdout.decode("utf-8")
     stderr = stderr.decode("utf-8")
     stderr = stderr.strip()
