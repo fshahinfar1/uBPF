@@ -148,4 +148,31 @@ int ubpf_set_unwind_function_index(struct ubpf_vm *vm, unsigned int idx);
  */
 uint8_t *ubpf_dump_jitted_fn(struct ubpf_vm *vm, unsigned int *size);
 
+
+/**
+ * @param name Name of the userspace map (defined when registering the map)
+ * @param vm Reference to the VM object having the maps
+ * @returns Reference of the map object
+ */
+struct ubpf_map *ubpf_select_map(char *name, struct ubpf_vm *vm);
+
+/**
+ * Perform lookup on userspace map
+ *
+ * @param map Reference to the map object
+ * @param key pointer to the key value
+ * @returns pointer to the value (NULL if not found)
+ */
+void *ubpf_lookup_map(struct ubpf_map* map, void *key);
+
+/**
+ * Perform  update on userspace map
+ *
+ * @param map Reference to the map object
+ * @param key pointer to the key value
+ * @param value pointer to the value that should be stored
+ * @returns zero on success
+ */
+int ubpf_update_map(struct ubpf_map* map, void *key, void *value);
+
 #endif

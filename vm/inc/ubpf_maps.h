@@ -20,22 +20,4 @@ struct ubpf_map_def {
 /* ------------------------ */
 
 struct ubpf_map;
-
-struct ubpf_map_ops {
-    unsigned int (*map_size)(const struct ubpf_map *map);
-    unsigned int (*map_dump)(const struct ubpf_map *map, void *data);
-    void *(*map_lookup)(const struct ubpf_map *map, const void *key);
-    int (*map_update)(struct ubpf_map *map, const void *key, void *value);
-    int (*map_delete)(struct ubpf_map *map, const void *key);
-    int (*map_add)(struct ubpf_map *map, void *value);
-};
-
-struct ubpf_map {
-    enum ubpf_map_type type;
-    struct ubpf_map_ops ops;
-    unsigned int key_size;
-    unsigned int value_size;
-    unsigned int max_entries;
-    void *data;
-};
 #endif

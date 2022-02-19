@@ -143,6 +143,8 @@ ubpf_destroy(struct ubpf_vm *vm)
     free(vm->insts);
     free(vm->ext_funcs);
     free(vm->ext_func_names);
+    free(vm->ext_maps);
+    free(vm->ext_map_names);
     free(vm);
 }
 
@@ -168,7 +170,7 @@ ubpf_register_map(struct ubpf_vm *vm, const char *name, struct ubpf_map *map)
         return -1;
     }
     vm->ext_maps[idx] = map;
-    vm->ext_map_names[idx] = name;
+    vm->ext_map_names[idx] = strndup(name, 31);
     vm->nb_maps++;
     return 0;
 }
@@ -918,3 +920,38 @@ ubpf_error(const char *fmt, ...)
     va_end(ap);
     return msg;
 }
+
+/* Userspace map API for control-plane applications */
+struct ubpf_map *ubpf_select_map(char *name, struct ubpf_vm *vm)
+{
+    for (int i = 0; i < vm->nb_maps; i++) {
+        if (!strcmp(vm->ext_map_names[i], name))
+            return vm->ext_maps[i];
+    }
+    return NULL;
+}
+
+void *ubpf_lookup_map(struct ubpf_map* map, void *key)
+{
+    if (!map)
+        return NULL;
+    if (!map->ops.map_lookup)
+        return NULL;
+    if (!key)
+        return NULL;
+    return map->ops.map_lookup(map, key);
+}
+
+int ubpf_update_map(struct ubpf_map* map, void *key, void *value)
+{
+    if (!map)
+        return -1;
+    if (!map->ops.map_update)
+        return -2;
+    if (!key)
+        return -3;
+    if (!value)
+        return -4;
+    return map->ops.map_update(map, key, value);
+}
+/* ---------------------------------------- */
