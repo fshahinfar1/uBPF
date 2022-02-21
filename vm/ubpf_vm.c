@@ -933,12 +933,18 @@ struct ubpf_map *ubpf_select_map(char *name, struct ubpf_vm *vm)
 
 void *ubpf_lookup_map(struct ubpf_map* map, void *key)
 {
-    if (!map)
+    if (!map) {
+        /* printf("no map!\n"); */
         return NULL;
-    if (!map->ops.map_lookup)
+    }
+    if (!map->ops.map_lookup) {
+        /* printf("no ops!\n"); */
         return NULL;
-    if (!key)
+    }
+    if (!key) {
+        /* printf("no key\n"); */
         return NULL;
+    }
     return map->ops.map_lookup(map, key);
 }
 

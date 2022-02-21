@@ -25,10 +25,10 @@
 #include <elf.h>
 
 /* Include maps */
-#include "maps/ubpf_array.h"
 #include "maps/ubpf_bf.h"
 #include "maps/ubpf_countmin.h"
 #include "maps/ubpf_hashmap.h"
+#include "maps/ubpf_array.h"
 
 #define MAX_SECTIONS 32
 
