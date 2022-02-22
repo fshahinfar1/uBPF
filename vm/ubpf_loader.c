@@ -83,12 +83,14 @@ initiate_map_obj(struct ubpf_map *map,  const struct ubpf_map_def *map_def,
             map->data = ubpf_hashmap_create(map_def);
             break;
         default:
-            *errmsg = ubpf_error("unrecognized map type: %d", map_def->type);
+            if (errmsg)
+                *errmsg = ubpf_error("unrecognized map type: %d", map_def->type);
             return -1;
     }
 
     if (!map->data) {
-        *errmsg = ubpf_error("failed to allocate memory");
+        if (errmsg)
+            *errmsg = ubpf_error("failed to allocate memory");
         return -1;
     }
     return 0;
@@ -384,4 +386,24 @@ error_map:
 error:
     free(text_copy);
     return -1;
+}
+
+struct ubpf_map *ubpf_create_map(char *name, struct ubpf_map_def *map_def,
+        struct ubpf_vm *vm)
+{
+    struct ubpf_map *map = malloc(sizeof(struct ubpf_map));
+    if (!map)
+        return NULL;
+
+    if (initiate_map_obj(map, map_def, NULL)) {
+        goto error;
+    };
+    int result = ubpf_register_map(vm, name, map);
+    if (result == -1) {
+        goto error;
+    }
+    return map;
+error:
+    free(map);
+    return NULL;
 }

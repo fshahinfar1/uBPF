@@ -163,7 +163,7 @@ struct ubpf_map *ubpf_select_map(char *name, struct ubpf_vm *vm);
  * @param key pointer to the key value
  * @returns pointer to the value (NULL if not found)
  */
-void *ubpf_lookup_map(struct ubpf_map* map, void *key);
+void *ubpf_lookup_map(struct ubpf_map *map, void *key);
 
 /**
  * Perform  update on userspace map
@@ -173,6 +173,9 @@ void *ubpf_lookup_map(struct ubpf_map* map, void *key);
  * @param value pointer to the value that should be stored
  * @returns zero on success
  */
-int ubpf_update_map(struct ubpf_map* map, void *key, void *value);
+int ubpf_update_map(struct ubpf_map *map, void *key, void *value);
+
+struct ubpf_map *ubpf_create_map(char *name, struct ubpf_map_def *map_def,
+        struct ubpf_vm *vm);
 
 #endif
