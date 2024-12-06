@@ -33,7 +33,7 @@ ubpf_array_create(const struct ubpf_map_def *map_def)
 void *
 ubpf_array_lookup(const struct ubpf_map *map, const void *key)
 {
-    uint32_t idx = *((const uint32_t *)key);
+    uint64_t idx = *((const uint32_t *)key);
     if (idx >= map->max_entries) {
         /* printf("size: %d idx: %d\n", map->max_entries, idx); */
         return NULL;
@@ -44,7 +44,7 @@ ubpf_array_lookup(const struct ubpf_map *map, const void *key)
 int
 ubpf_array_update(struct ubpf_map *map, const void *key, void *value)
 {
-    uint64_t idx = *((const uint64_t *)key);
+    uint64_t idx = *((const uint32_t *)key);
     if (idx >= map->max_entries) {
         return -5;
     }

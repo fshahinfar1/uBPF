@@ -121,3 +121,5 @@ doxygen_output/
 *.ll
 
 *.o
+
+tags
