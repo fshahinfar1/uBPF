@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include "ubpf_maps.h"
 
 // Default values for maximum instruction count and stack size.
@@ -113,7 +114,7 @@ int ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_len, char **er
 
 int ubpf_exec(const struct ubpf_vm *vm, void *mem, size_t mem_len, uint64_t* bpf_return_value);
 
-ubpf_jit_fn ubpf_compile(struct ubpf_vm *vm, char **errmsg);
+ubpf_jit_fn ubpf_compile(struct ubpf_vm *vm, unsigned int prog_index, char **errmsg);
 
 /**
  * Translate the eBPF byte code to x64 machine code, store in buffer, and
@@ -177,5 +178,24 @@ int ubpf_update_map(struct ubpf_map *map, void *key, void *value);
 
 struct ubpf_map *ubpf_create_map(char *name, struct ubpf_map_def *map_def,
         struct ubpf_vm *vm);
+
+/* These two functions are for two phase lookup operation. It is used to
+ * portotype an approach for overlaping computation with prefetching hashmap
+ * memory.
+ *
+ * The API work as follows:
+ * The program calls map_lookup_p1 (Phase 1) with the map and key it want to use.
+ * It, then, returns with a suitable code (terminates the program) notifying
+ * the runtime that the rest of program should be executed later.
+ * At the second part of the program map_lookup_p2 (Phase 2) is used to
+ * actually receive the value (return value). It will also copy the key to the
+ * given pointer.
+ *
+ * The runtime will use `ubpf_set_batch_offset` to notify the VM and indicate
+ * which packet from the batch is being processes
+ * */
+int  ubpf_lookup_map_p1(const struct ubpf_map *map, const void *key /* input */);
+void *ubpf_lookup_map_p2(const struct ubpf_map *map, void *key /* output */);
+void ubpf_set_batch_offset(int off);
 
 #endif

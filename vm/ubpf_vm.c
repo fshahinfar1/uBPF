@@ -127,6 +127,12 @@ ubpf_create(void)
     vm->nb_maps = 0;
     /* ------------------------- */
 
+    vm->sz_yield_chain = 0;
+    vm->insts = NULL;
+    vm->num_insts = NULL;
+    vm->jitted = NULL;
+    vm->jitted_size = NULL;
+
     vm->bounds_check_enabled = true;
     vm->error_printf = fprintf;
 
@@ -137,14 +143,24 @@ ubpf_create(void)
 void
 ubpf_destroy(struct ubpf_vm *vm)
 {
-    if (vm->jitted) {
-        munmap(vm->jitted, vm->jitted_size);
+    for (int i = 0; i < vm->nb_maps; i++) {
+        free(vm->ext_maps[i]);
+        free((void *)vm->ext_map_names[i]);
+    }
+    for (int i = 0; i < vm->sz_yield_chain; i++) {
+        free(vm->insts[i]);
+        if (vm->jitted) {
+            munmap(vm->jitted[i], vm->jitted_size[i]);
+        }
     }
     free(vm->insts);
+    free(vm->num_insts);
     free(vm->ext_funcs);
     free(vm->ext_func_names);
     free(vm->ext_maps);
     free(vm->ext_map_names);
+    free(vm->jitted);
+    free(vm->jitted_size);
     free(vm);
 }
 
@@ -233,15 +249,60 @@ ubpf_load(struct ubpf_vm *vm, const void *code, uint32_t code_len, char **errmsg
         return -1;
     }
 
-    vm->insts = malloc(code_len);
+    vm->sz_yield_chain = 1;
+    vm->insts = malloc(sizeof(void *));
+    vm->num_insts = malloc(sizeof(uint16_t));
+    vm->insts[0] = malloc(code_len);
     if (vm->insts == NULL) {
         *errmsg = ubpf_error("out of memory");
         return -1;
     }
 
-    memcpy(vm->insts, code, code_len);
-    vm->num_insts = code_len/sizeof(vm->insts[0]);
+    memcpy(vm->insts[0], code, code_len);
+    vm->num_insts[0] = code_len/sizeof(vm->insts[0][0]);
 
+    return 0;
+}
+
+int
+ubpf_load_prog(struct ubpf_vm *vm, const void *code, uint32_t code_len,
+        uint16_t prog_index, char **errmsg)
+{
+    *errmsg = NULL;
+
+    if (prog_index >= vm->sz_yield_chain) {
+        *errmsg = ubpf_error("program index out of range");
+        return -1;
+    }
+
+    if (!vm->insts) {
+        *errmsg = ubpf_error("internal error: insts array is not initialized");
+        return -1;
+    }
+
+    if (vm->insts[prog_index] != NULL) {
+        *errmsg = ubpf_error("code has already been loaded into this VM (at program index: %d)", prog_index);
+        return -1;
+    }
+
+    if (code_len % 8 != 0) {
+        *errmsg = ubpf_error("code_len must be a multiple of 8");
+        return -1;
+    }
+
+    if (!validate(vm, code, code_len/8, errmsg)) {
+        return -1;
+    }
+
+    void *p = malloc(code_len);
+    vm->insts[prog_index] = p;
+    if (p == NULL) {
+        *errmsg = ubpf_error("out of memory");
+        return -1;
+    }
+
+    memcpy(p, code, code_len);
+    vm->num_insts[prog_index] = code_len / sizeof(vm->insts[prog_index][0]);
     return 0;
 }
 
@@ -252,10 +313,14 @@ u32(uint64_t x)
 }
 
 int
-ubpf_exec(const struct ubpf_vm *vm, void *mem, size_t mem_len, uint64_t* bpf_return_value)
+ubpf_exec(const struct ubpf_vm *vm, void *mem, size_t mem_len,
+        uint64_t* bpf_return_value)
 {
+    if (vm->sz_yield_chain < 1 || !vm->insts)
+        return -1;
+
     uint16_t pc = 0;
-    const struct ebpf_inst *insts = vm->insts;
+    const struct ebpf_inst *insts = vm->insts[0];
     uint64_t reg[16];
     uint64_t stack[(UBPF_STACK_SIZE+7)/8];
 
@@ -921,6 +986,15 @@ ubpf_error(const char *fmt, ...)
     return msg;
 }
 
+/* This is used to support overlapping lookup procedure with processing of a
+ * batch of packets
+ * */
+int __offset_in_batch;
+void ubpf_set_batch_offset(int off)
+{
+    __offset_in_batch = off;
+}
+
 /* Userspace map API for control-plane applications */
 struct ubpf_map *ubpf_select_map(char *name, struct ubpf_vm *vm)
 {
@@ -946,6 +1020,37 @@ void *ubpf_lookup_map(struct ubpf_map* map, void *key)
         return NULL;
     }
     return map->ops.map_lookup(map, key);
+}
+
+int
+ubpf_lookup_map_p1(const struct ubpf_map *map, const void *key /* input */)
+{
+    if (!map) {
+        return -1;
+    }
+    if (!map->ops.map_lookup_p1) {
+        return -1;
+    }
+    if (!key) {
+        return -1;
+    }
+    map->ops.map_lookup_p1(map, key);
+    return 0;
+}
+
+void *
+ubpf_lookup_map_p2(const struct ubpf_map *map, void *key /* output */)
+{
+    if (!map) {
+        return NULL;
+    }
+    if (!map->ops.map_lookup_p2) {
+        return NULL;
+    }
+    if (!key) {
+        return NULL;
+    }
+    return map->ops.map_lookup_p2(map, key);
 }
 
 int ubpf_update_map(struct ubpf_map* map, void *key, void *value)

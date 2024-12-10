@@ -47,6 +47,11 @@ struct section {
     uint64_t size;
 };
 
+typedef struct {
+    uint32_t off;
+    uint32_t size;
+} prog_info_t;
+
 static const void *
 bounds_check(struct bounds *bounds, uint64_t offset, uint64_t size)
 {
@@ -94,6 +99,81 @@ initiate_map_obj(struct ubpf_map *map,  const struct ubpf_map_def *map_def,
         return -1;
     }
     return 0;
+}
+
+/* this function finds functions defined in the first .text section of elf file
+ * The function begining address of each function is set in the progs. It will
+ * find upto max_progs number of functions.
+ *
+ * @param sections: parsed sections of the elf file
+ * @param count_sections: number of sections
+ * @param progs: an array of integers that will be set to the function offset
+ * @param max_progs: size of the progs array
+ * @returns number of functions found
+ * */
+static int _get_funcs(struct section *sections, size_t count_sections,
+        prog_info_t *progs, size_t max_progs)
+{
+    int i;
+    int text_shndx = 0;
+    int symbol_count = 0;
+    int str_tbl_shndx = -1;
+    const Elf64_Sym *symbol_table = NULL;
+    /* Find first text section */
+    for (i = 0; i < count_sections; i++) {
+        const Elf64_Shdr *shdr = sections[i].shdr;
+        if (shdr->sh_type == SHT_PROGBITS &&
+                shdr->sh_flags == (SHF_ALLOC|SHF_EXECINSTR)) {
+            text_shndx = i;
+            break;
+        }
+    }
+
+    /* Find symbol table && string table*/
+    for (i = 0; i < count_sections; i++) {
+        const Elf64_Shdr *shdr = sections[i].shdr;
+        if(shdr->sh_type == SHT_SYMTAB) {
+            symbol_table = sections[i].data;
+            symbol_count = sections[i].size / shdr->sh_entsize;
+        }
+
+        if (shdr->sh_type == SHT_STRTAB && str_tbl_shndx == -1) {
+            str_tbl_shndx = i;
+        }
+    }
+    if (symbol_count == 0 || symbol_table == NULL) {
+        fprintf(stderr, "Did not found the symbol table!\n");
+        return 0;
+    }
+    if (str_tbl_shndx == -1) {
+        fprintf(stderr, "Did not found the string table\n");
+        return 0;
+    }
+
+    printf("symbol count: %d\n", symbol_count);
+    /* Go through symbols and find functions in the first .text section */
+    const char *strtbl = sections[str_tbl_shndx].data;
+    int strtbl_sz = sections[str_tbl_shndx].size;
+    int counter = 0;
+    for (i = 0; i < symbol_count; i++) {
+        const Elf64_Sym * sym = &symbol_table[i];
+        if (sym->st_shndx != text_shndx)
+            continue;
+        if (ELF64_ST_TYPE(sym->st_info) != STT_FUNC)
+            continue;
+        int name_index = sym->st_name;
+        assert (name_index < strtbl_sz);
+        const char *name = &strtbl[name_index];
+        printf("Function: %s, Address: 0x%lx, Size: %ld\n",
+                name, sym->st_value, sym->st_size); 
+        /* void *prog = sections[text_shndx].data + sym->st_value; */
+        progs[counter].off = sym->st_value;
+        progs[counter].size = sym->st_size;
+        counter++;
+        if (counter >= max_progs)
+            break;
+    }
+    return counter;
 }
 
 int
@@ -172,6 +252,19 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
         sections[i].size = shdr->sh_size;
     }
 
+    /* Get address of functions defined in the first .text section */
+    prog_info_t progs[MAX_YIELD_CHAIN_FUNCS];
+    int sz = _get_funcs(sections, ehdr->e_shnum, progs, MAX_YIELD_CHAIN_FUNCS);
+    if (sz == 0) {
+        ubpf_error("did not found any functions");
+    }
+    vm->sz_yield_chain = sz;
+    vm->insts = calloc(MAX_YIELD_CHAIN_FUNCS, sizeof(void *));
+    vm->num_insts = calloc(MAX_YIELD_CHAIN_FUNCS, sizeof(uint16_t));
+    vm->jitted = calloc(MAX_YIELD_CHAIN_FUNCS, sizeof(ubpf_jit_fn));
+    vm->jitted_size = calloc(MAX_YIELD_CHAIN_FUNCS, sizeof(size_t));
+    assert (progs[0].off == 0);
+
     /* Find first text section */
     int text_shndx = 0;
     for (i = 0; i < ehdr->e_shnum; i++) {
@@ -185,7 +278,7 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
 
     if (!text_shndx) {
         *errmsg = ubpf_error("text section not found");
-        goto error;
+        goto error2;
     }
 
     struct section *text = &sections[text_shndx];
@@ -224,7 +317,7 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
         str_copy = malloc(str->size);
         if (!str_copy) {
             *errmsg = ubpf_error("failed to allocate memory");
-            goto error;
+            goto error2;
         }
         memcpy(str_copy, str->data, str->size);
     }
@@ -246,7 +339,7 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
 
         if (rel->shdr->sh_link >= ehdr->e_shnum) {
             *errmsg = ubpf_error("bad symbol table section index");
-            goto error;
+            goto error2;
         }
 
         struct section *symtab = &sections[rel->shdr->sh_link];
@@ -255,7 +348,7 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
 
         if (symtab->shdr->sh_link >= ehdr->e_shnum) {
             *errmsg = ubpf_error("bad string table section index");
-            goto error;
+            goto error2;
         }
 
         struct section *strtab = &sections[symtab->shdr->sh_link];
@@ -273,27 +366,27 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
 
             if (ELF64_R_TYPE(r->r_info) != ET_EXEC && ELF64_R_TYPE(r->r_info) != ET_REL) {
                 *errmsg = ubpf_error("bad relocation type %u", ELF64_R_TYPE(r->r_info));
-                goto error;
+                goto error2;
             }
 
             uint32_t sym_idx = ELF64_R_SYM(r->r_info);
             if (sym_idx >= num_syms) {
                 *errmsg = ubpf_error("bad symbol index");
-                goto error;
+                goto error2;
             }
 
             const Elf64_Sym *sym = &syms[sym_idx];
 
             if (sym->st_name >= strtab->size) {
                 *errmsg = ubpf_error("bad symbol name");
-                goto error;
+                goto error2;
             }
 
             const char *sym_name = strings + sym->st_name;
 
             if (r->r_offset + 8 > text->size) {
                 *errmsg = ubpf_error("bad relocation offset");
-                goto error;
+                goto error2;
             }
 
             /* unsigned int imm = ubpf_lookup_registered_function(vm, sym_name); */
@@ -311,7 +404,7 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
                     if (sym_shndx == data_shndx) {
                         if (!data_shndx) {
                             *errmsg = ubpf_error("missing data section");
-                            goto error;
+                            goto error2;
                         }
 
                         map = ubpf_lookup_registered_map(vm, sym_name);
@@ -320,7 +413,7 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
                             uint64_t sym_data_offset = sym->st_value;
                             if (sym_data_offset + sizeof(struct ubpf_map_def) > data->size) {
                                 *errmsg = ubpf_error("bad data offset");
-                                goto error;
+                                goto error2;
                             }
                             const struct ubpf_map_def *map_def = (void *)((uint64_t)data->data + sym_data_offset);
 
@@ -342,7 +435,7 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
                     } else if (sym_shndx == str_shndx) {
                         if (!str_shndx) {
                             *errmsg = ubpf_error("missing string section");
-                            goto error;
+                            goto error2;
                         }
 
                         uint64_t sym_data_offset = sym->st_value;
@@ -350,7 +443,7 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
                         size_t str_len = strlen(string);
                         if (sym_data_offset + str_len > str->size) {
                             *errmsg = ubpf_error("bad data offset");
-                            goto error;
+                            goto error2;
                         }
 
                         *(uint32_t *)((uint64_t)text_copy + r->r_offset + 4) = (uint32_t)((uint64_t)string);
@@ -364,7 +457,7 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
                     unsigned int imm = ubpf_lookup_registered_function(vm, sym_name);
                     if (imm == -1) {
                         *errmsg = ubpf_error("function '%s' not found", sym_name);
-                        goto error;
+                        goto error2;
                     }
 
                     *(uint32_t *)((uint64_t)text_copy + r->r_offset + 4) = imm;
@@ -377,12 +470,23 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
         }
     }
 
-    int rv = ubpf_load(vm, text_copy, sections[text_shndx].size, errmsg);
+    /* int rv = ubpf_load(vm, text_copy, sections[text_shndx].size, errmsg); */
+    for (i = 0; i < vm->sz_yield_chain; i++) {
+        void *p = text_copy + progs[i].off;
+        int rv = ubpf_load_prog(vm, p, progs[i].size, i, errmsg);
+        if (rv != 0)
+            goto error_map;
+    }
     free(text_copy);
-    return rv;
+    return 0;
 
 error_map:
     free(map);
+error2:
+    free(vm->insts);
+    free(vm->num_insts);
+    free(vm->jitted);
+    free(vm->jitted_size);
 error:
     free(text_copy);
     return -1;

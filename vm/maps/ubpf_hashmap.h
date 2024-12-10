@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #include "../utils/openvswitch/list.h"
 #include "../utils/hash_funcs/lookup3.h"
@@ -45,11 +46,21 @@ void *ubpf_hashmap_lookup(const struct ubpf_map *map, const void *key);
 int ubpf_hashmap_update(struct ubpf_map *map, const void *key, void *value);
 int ubpf_hashmap_delete(struct ubpf_map *map, const void *key);
 
+
+#define __MAX_BATCH 128
+extern int __offset_in_batch;
+struct __lookup_state {
+    uint32_t hash;
+    struct ovs_list *head;
+    char key[0] OVS_ALIGNED_VAR(8);
+};
+
 struct hashmap {
     struct ovs_list *buckets;
     uint32_t count;
     uint32_t nb_buckets;
     uint32_t elem_size;
+    struct __lookup_state *__ls;
 };
 
 struct hmap_elem {
@@ -75,6 +86,11 @@ ubpf_hashmap_create(const struct ubpf_map_def *map_def)
     for (int i = 0; i < hmap->nb_buckets; i++) {
         ovs_list_init(&hmap->buckets[i]);
     }
+
+    const size_t __state_size = sizeof(struct __lookup_state) +
+        round_up(map_def->key_size, 8);
+    hmap->__ls = malloc(__state_size * __MAX_BATCH);
+    assert(hmap->__ls != NULL);
 
     return hmap;
 }
@@ -155,6 +171,42 @@ ubpf_hashmap_lookup(const struct ubpf_map *map, const void *key)
     return NULL;
 }
 
+void ubpf_hashmap_lookup_p1(const struct ubpf_map *map, const void *key)
+{
+    int batch_off = __offset_in_batch;
+    uint32_t key_sz = map->key_size;
+    struct hashmap *hmap = map->data;
+    struct __lookup_state *ls = &hmap->__ls[batch_off];
+    /* keep a copy of the key for future comparisons */
+    memcpy(ls->key, key, key_sz);
+    uint32_t hash = ubpf_hashmap_hash(key, key_sz);
+    ls->hash = hash;
+    struct ovs_list *head = select_bucket(hmap, hash);
+    ls->head = head;
+
+    struct hmap_elem *l;
+    INIT_CONTAINER(l, head->next, hash_node);
+    if (l != NULL)
+        __builtin_prefetch(l);
+}
+
+void *
+ubpf_hashmap_lookup_p2(const struct ubpf_map *map, void *key)
+{
+    int batch_off = __offset_in_batch;
+    uint32_t key_sz = map->key_size;
+    struct hashmap *hmap = map->data;
+    struct __lookup_state *ls = &hmap->__ls[batch_off];
+    memcpy(key, ls->key, key_sz);
+
+    struct hmap_elem *elem;
+    elem = lookup_elem_raw(ls->head, ls->hash, ls->key, key_sz);
+    if (elem) {
+        return elem->key + round_up(map->key_size, 8);
+    }
+    return NULL;
+}
+
 int
 ubpf_hashmap_update(struct ubpf_map *map, const void *key, void *value)
 {
@@ -214,6 +266,8 @@ static const struct ubpf_map_ops ubpf_hashmap_ops = {
     .map_update = ubpf_hashmap_update,
     .map_delete = ubpf_hashmap_delete,
     .map_add = NULL,
+    .map_lookup_p1 = ubpf_hashmap_lookup_p1,
+    .map_lookup_p2 = ubpf_hashmap_lookup_p2,
 };
 
 #endif

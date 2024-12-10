@@ -130,7 +130,8 @@ ubpf_set_register_offset(int x)
 }
 
 static int
-translate(struct ubpf_vm *vm, struct jit_state *state, char **errmsg)
+translate(struct ubpf_vm *vm, struct jit_state *state,
+        struct ebpf_inst *insts, size_t num_insts, char **errmsg)
 {
     int i;
 
@@ -151,8 +152,8 @@ translate(struct ubpf_vm *vm, struct jit_state *state, char **errmsg)
     /* Allocate stack space */
     emit_alu64_imm32(state, 0x81, 5, RSP, UBPF_STACK_SIZE);
 
-    for (i = 0; i < vm->num_insts; i++) {
-        struct ebpf_inst inst = vm->insts[i];
+    for (i = 0; i < num_insts; i++) {
+        struct ebpf_inst inst = insts[i];
         state->pc_locs[i] = state->offset;
 
         int dst = map_register(inst.dst);
@@ -440,7 +441,7 @@ translate(struct ubpf_vm *vm, struct jit_state *state, char **errmsg)
             }
             break;
         case EBPF_OP_EXIT:
-            if (i != vm->num_insts - 1) {
+            if (i != num_insts - 1) {
                 emit_jmp(state, TARGET_PC_EXIT);
             }
             break;
@@ -608,7 +609,7 @@ translate(struct ubpf_vm *vm, struct jit_state *state, char **errmsg)
             break;
 
         case EBPF_OP_LDDW: {
-            struct ebpf_inst inst2 = vm->insts[++i];
+            struct ebpf_inst inst2 = insts[++i];
             uint64_t imm = (uint32_t)inst.imm | ((uint64_t)inst2.imm << 32);
             emit_load_imm(state, dst, imm);
             break;
@@ -761,7 +762,38 @@ ubpf_translate(struct ubpf_vm *vm, uint8_t * buffer, size_t * size, char **errms
     state.jumps = calloc(UBPF_MAX_INSTS, sizeof(state.jumps[0]));
     state.num_jumps = 0;
 
-    if (translate(vm, &state, errmsg) < 0) {
+    if (translate(vm, &state, vm->insts[0], vm->num_insts[0], errmsg) < 0) {
+        goto out;
+    }
+
+    resolve_jumps(&state);
+    result = 0;
+
+    *size = state.offset;
+
+out:
+    free(state.pc_locs);
+    free(state.jumps);
+    return result;
+}
+
+static int
+ubpf_translate_prog(struct ubpf_vm *vm, uint8_t * buffer, size_t * size,
+        uint32_t prog_index, char **errmsg)
+{
+    struct jit_state state;
+    int result = -1;
+
+    state.offset = 0;
+    state.size = *size;
+    state.buf = buffer;
+    state.pc_locs = calloc(UBPF_MAX_INSTS+1, sizeof(state.pc_locs[0]));
+    state.jumps = calloc(UBPF_MAX_INSTS, sizeof(state.jumps[0]));
+    state.num_jumps = 0;
+
+    struct ebpf_inst *insts = vm->insts[prog_index];
+    uint32_t num_insts = vm->num_insts[prog_index];
+    if (translate(vm, &state, insts, num_insts, errmsg) < 0) {
         goto out;
     }
 
@@ -777,27 +809,32 @@ out:
 }
 
 ubpf_jit_fn
-ubpf_compile(struct ubpf_vm *vm, char **errmsg)
+ubpf_compile(struct ubpf_vm *vm, uint32_t prog_index, char **errmsg)
 {
     void *jitted = NULL;
     uint8_t *buffer = NULL;
     size_t jitted_size;
 
-    if (vm->jitted) {
-        return vm->jitted;
+    if (prog_index >= vm->sz_yield_chain) {
+        *errmsg = ubpf_error("code has not been loaded into this VM");
+        return NULL;
+    }
+
+    if (vm->jitted[prog_index]) {
+        return vm->jitted[prog_index];
     }
 
     *errmsg = NULL;
 
-    if (!vm->insts) {
-        *errmsg = ubpf_error("code has not been loaded into this VM");
+    if (!vm->insts || !vm->insts[prog_index]) {
+        *errmsg = ubpf_error("code has not been loaded into this VM (%p, %p)", vm->insts, vm->insts[0]);
         return NULL;
     }
 
     jitted_size = 65536;
     buffer = calloc(jitted_size, 1);
 
-    if (ubpf_translate(vm, buffer, &jitted_size, errmsg) < 0) {
+    if (ubpf_translate_prog(vm, buffer, &jitted_size, prog_index, errmsg) < 0) {
         goto out;
     }
 
@@ -814,21 +851,21 @@ ubpf_compile(struct ubpf_vm *vm, char **errmsg)
         goto out;
     }
 
-    vm->jitted = jitted;
-    vm->jitted_size = jitted_size;
+    vm->jitted[prog_index] = jitted;
+    vm->jitted_size[prog_index] = jitted_size;
 
 out:
     free(buffer);
     if (jitted && vm->jitted == NULL) {
         munmap(jitted, jitted_size);
     }
-    return vm->jitted;
+    return vm->jitted[prog_index];
 }
 
 
 uint8_t *
 ubpf_dump_jitted_fn(struct ubpf_vm *vm, unsigned int *size)
 {
-    *size = vm->jitted_size;
+    *size = vm->jitted_size[0];
     return (uint8_t *)vm->jitted;
 }

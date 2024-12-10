@@ -131,7 +131,7 @@ int main(int argc, char **argv)
     uint64_t ret;
 
     if (jit) {
-        ubpf_jit_fn fn = ubpf_compile(vm, &errmsg);
+        ubpf_jit_fn fn = ubpf_compile(vm, 0, &errmsg);
         if (fn == NULL) {
             fprintf(stderr, "Failed to compile: %s\n", errmsg);
             free(errmsg);

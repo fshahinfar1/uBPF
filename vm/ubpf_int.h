@@ -25,12 +25,15 @@ typedef uint64_t (*ext_func)(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64
 
 char *ubpf_error(const char *fmt, ...);
 unsigned int ubpf_lookup_registered_function(struct ubpf_vm *vm, const char *name);
+int ubpf_load_prog(struct ubpf_vm *vm, const void *code, uint32_t code_len, uint16_t prog_index, char **errmsg);
 
 /* Note: These codes are Add from Oko project */
 /* #define MAX_INSTS 65536 */
 /* #define STACK_SIZE 512 */
 #define NB_FUNC_ARGS 5
 #define MAX_SIZE_ARG 8
+
+#define MAX_YIELD_CHAIN_FUNCS 2
 
 struct ubpf_map_ops {
     unsigned int (*map_size)(const struct ubpf_map *map);
@@ -39,6 +42,9 @@ struct ubpf_map_ops {
     int (*map_update)(struct ubpf_map *map, const void *key, void *value);
     int (*map_delete)(struct ubpf_map *map, const void *key);
     int (*map_add)(struct ubpf_map *map, void *value);
+
+    void (*map_lookup_p1)(const struct ubpf_map *map, const void *key /* input */);
+    void *(*map_lookup_p2)(const struct ubpf_map *map, void *key /* output */);
 };
 
 struct ubpf_map {
@@ -95,10 +101,11 @@ struct ubpf_map *ubpf_lookup_registered_map(struct ubpf_vm *vm, const char *name
 /* ----------------------------- */
 
 struct ubpf_vm {
-    struct ebpf_inst *insts;
-    uint16_t num_insts;
-    ubpf_jit_fn jitted;
-    size_t jitted_size;
+    uint16_t sz_yield_chain;
+    struct ebpf_inst **insts;
+    uint16_t *num_insts;
+    ubpf_jit_fn *jitted;
+    size_t *jitted_size;
     ext_func *ext_funcs;
     const char **ext_func_names;
     bool bounds_check_enabled;
