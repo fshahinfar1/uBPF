@@ -164,8 +164,8 @@ static int _get_funcs(struct section *sections, size_t count_sections,
         int name_index = sym->st_name;
         assert (name_index < strtbl_sz);
         const char *name = &strtbl[name_index];
-        printf("Function: %s, Address: 0x%lx, Size: %ld\n",
-                name, sym->st_value, sym->st_size); 
+        printf("[%d] Function: %s, Address: 0x%lx, Size: %ld\n",
+                counter, name, sym->st_value, sym->st_size); 
         /* void *prog = sections[text_shndx].data + sym->st_value; */
         progs[counter].off = sym->st_value;
         progs[counter].size = sym->st_size;
@@ -330,39 +330,32 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
     for (i = 0; i < ehdr->e_shnum; i++) {
         struct section *rel = &sections[i];
         if (rel->shdr->sh_type != SHT_REL) {
+            /* NOTE: there is also SHT_RELA that we are ignoring along other
+             * types */
             continue;
         } else if (rel->shdr->sh_info != text_shndx) {
+            /* it is not about the .text section */
             continue;
         }
 
         const Elf64_Rel *rs = rel->data;
-
         if (rel->shdr->sh_link >= ehdr->e_shnum) {
             *errmsg = ubpf_error("bad symbol table section index");
             goto error2;
         }
-
         struct section *symtab = &sections[rel->shdr->sh_link];
         const Elf64_Sym *syms = symtab->data;
         uint32_t num_syms = symtab->size/sizeof(syms[0]);
-
         if (symtab->shdr->sh_link >= ehdr->e_shnum) {
             *errmsg = ubpf_error("bad string table section index");
             goto error2;
         }
-
         struct section *strtab = &sections[symtab->shdr->sh_link];
         const char *strings = strtab->data;
 
         int j;
         for (j = 0; j < rel->size/sizeof(Elf64_Rel); j++) {
             const Elf64_Rel *r = &rs[j];
-
-            /* if (ELF64_R_TYPE(r->r_info) != 2) { */
-            /*     *errmsg = ubpf_error("bad relocation type %u", ELF64_R_TYPE(r->r_info)); */
-            /*     goto error; */
-            /* } */
-            /* *(uint32_t *)(text_copy + r->r_offset + 4) = imm; */
 
             if (ELF64_R_TYPE(r->r_info) != ET_EXEC && ELF64_R_TYPE(r->r_info) != ET_REL) {
                 *errmsg = ubpf_error("bad relocation type %u", ELF64_R_TYPE(r->r_info));
@@ -388,12 +381,6 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
                 *errmsg = ubpf_error("bad relocation offset");
                 goto error2;
             }
-
-            /* unsigned int imm = ubpf_lookup_registered_function(vm, sym_name); */
-            /* if (imm == -1) { */
-            /*     *errmsg = ubpf_error("function '%s' not found", sym_name); */
-            /*     goto error; */
-            /* } */
 
             /* Oko resolves the map relocations */
             switch(ELF64_R_TYPE(r->r_info)) {

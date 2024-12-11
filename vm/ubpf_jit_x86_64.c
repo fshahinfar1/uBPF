@@ -821,6 +821,7 @@ ubpf_compile(struct ubpf_vm *vm, uint32_t prog_index, char **errmsg)
     }
 
     if (vm->jitted[prog_index]) {
+        /* already compiled this prog */
         return vm->jitted[prog_index];
     }
 
@@ -856,7 +857,7 @@ ubpf_compile(struct ubpf_vm *vm, uint32_t prog_index, char **errmsg)
 
 out:
     free(buffer);
-    if (jitted && vm->jitted == NULL) {
+    if (jitted && vm->jitted[prog_index] == NULL) {
         munmap(jitted, jitted_size);
     }
     return vm->jitted[prog_index];

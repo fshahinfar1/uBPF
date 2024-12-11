@@ -295,12 +295,11 @@ ubpf_load_prog(struct ubpf_vm *vm, const void *code, uint32_t code_len,
     }
 
     void *p = malloc(code_len);
-    vm->insts[prog_index] = p;
     if (p == NULL) {
         *errmsg = ubpf_error("out of memory");
         return -1;
     }
-
+    vm->insts[prog_index] = p;
     memcpy(p, code, code_len);
     vm->num_insts[prog_index] = code_len / sizeof(vm->insts[prog_index][0]);
     return 0;
