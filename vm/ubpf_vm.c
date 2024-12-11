@@ -1028,10 +1028,10 @@ ubpf_lookup_map_p1(const struct ubpf_map *map, const void *key /* input */)
         return -1;
     }
     if (!map->ops.map_lookup_p1) {
-        return -1;
+        return -2;
     }
     if (!key) {
-        return -1;
+        return -3;
     }
     map->ops.map_lookup_p1(map, key);
     return 0;
