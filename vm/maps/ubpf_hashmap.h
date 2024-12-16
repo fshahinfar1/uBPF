@@ -51,8 +51,6 @@ int ubpf_hashmap_delete(struct ubpf_map *map, const void *key);
 extern int __offset_in_batch;
 struct __lookup_state {
     uint32_t hash;
-    struct ovs_list *head;
-    char key[0] OVS_ALIGNED_VAR(8);
 };
 
 struct hashmap {
@@ -60,7 +58,6 @@ struct hashmap {
     uint32_t count;
     uint32_t nb_buckets;
     uint32_t elem_size;
-    uint32_t __ls_sz;
     struct __lookup_state *__ls;
 };
 
@@ -72,7 +69,7 @@ struct hmap_elem {
 
 
 #define BPF_KEY_IS_HASH 1
-#define GET_LOOKUP_STATE(hmap, off) {(struct __lookup_state *)((uint64_t)(hmap)->__ls + ((off) * (hmap)->__ls_sz))}
+#define GET_LOOKUP_STATE(hmap, off) {(struct __lookup_state *)((uint64_t)(hmap)->__ls + ((off) * sizeof(struct __lookup_state)))}
 
 void *
 ubpf_hashmap_create(const struct ubpf_map_def *map_def)
@@ -89,9 +86,7 @@ ubpf_hashmap_create(const struct ubpf_map_def *map_def)
         ovs_list_init(&hmap->buckets[i]);
     }
 
-    const size_t __state_size = sizeof(struct __lookup_state) +
-        round_up(map_def->key_size, 8);
-    hmap->__ls_sz = __state_size;
+    const size_t __state_size = sizeof(struct __lookup_state);
     hmap->__ls = malloc(__state_size * __MAX_BATCH);
     assert(hmap->__ls != NULL);
 
@@ -181,17 +176,15 @@ void ubpf_hashmap_lookup_p1(const struct ubpf_map *map, const void *key)
     struct hashmap *hmap = map->data;
     struct __lookup_state *ls = GET_LOOKUP_STATE(hmap, batch_off);
     /* keep a copy of the key for future comparisons */
-    /* memcpy(ls->key, key, key_sz); */
     uint32_t hash = ubpf_hashmap_hash(key, key_sz);
     ls->hash = hash;
     struct ovs_list *head = select_bucket(hmap, hash);
-    ls->head = head;
 
     struct hmap_elem *l;
     INIT_CONTAINER(l, head->next, hash_node);
-    if (l != NULL) {
-        __builtin_prefetch(&l->key, 0, 2);
-    }
+    __builtin_prefetch(&l->hash, 0, 3);
+    __builtin_prefetch(&l->key, 0, 2);
+    /* printf("prefetch: %p\n", &l->key); */
 }
 
 void *
@@ -201,12 +194,12 @@ ubpf_hashmap_lookup_p2(const struct ubpf_map *map, void *key)
     uint32_t key_sz = map->key_size;
     struct hashmap *hmap = map->data;
     struct __lookup_state *ls = GET_LOOKUP_STATE(hmap, batch_off);
-    /* memcpy(key, ls->key, key_sz); */
 
     struct ovs_list *head = select_bucket(hmap, ls->hash);
     struct hmap_elem *elem;
     elem = lookup_elem_raw(head, ls->hash, key, key_sz);
     if (elem) {
+        /* printf("actual: %p\n", &elem->key); */
         return elem->key + round_up(map->key_size, 8);
     }
     return NULL;
