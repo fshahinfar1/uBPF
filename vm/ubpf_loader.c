@@ -259,10 +259,10 @@ ubpf_load_elf(struct ubpf_vm *vm, const void *elf, size_t elf_size, char **errms
         ubpf_error("did not found any functions");
     }
     vm->sz_yield_chain = sz;
-    vm->insts = calloc(MAX_YIELD_CHAIN_FUNCS, sizeof(void *));
-    vm->num_insts = calloc(MAX_YIELD_CHAIN_FUNCS, sizeof(uint16_t));
-    vm->jitted = calloc(MAX_YIELD_CHAIN_FUNCS, sizeof(ubpf_jit_fn));
-    vm->jitted_size = calloc(MAX_YIELD_CHAIN_FUNCS, sizeof(size_t));
+    vm->insts = calloc(sz, sizeof(void *));
+    vm->num_insts = calloc(sz, sizeof(uint16_t));
+    vm->jitted = calloc(sz, sizeof(ubpf_jit_fn));
+    vm->jitted_size = calloc(sz, sizeof(size_t));
     assert (progs[0].off == 0);
 
     /* Find first text section */
