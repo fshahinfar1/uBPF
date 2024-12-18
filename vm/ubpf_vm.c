@@ -988,10 +988,13 @@ ubpf_error(const char *fmt, ...)
 /* This is used to support overlapping lookup procedure with processing of a
  * batch of packets
  * */
-int __offset_in_batch;
+int offset_in_batch;
+yield_state_t yield_state[MAX_BATCH_SZ];
+
 void ubpf_set_batch_offset(int off)
 {
-    __offset_in_batch = off;
+    offset_in_batch = off;
+    __builtin_prefetch(yield_state + off);
 }
 
 /* Userspace map API for control-plane applications */

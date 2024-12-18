@@ -115,4 +115,13 @@ struct ubpf_vm {
     const char **ext_map_names;
     uint16_t nb_maps;
 };
+
+/* Handling state for a batch of packets. Used to implement two phase lookup. */
+#define MAX_BATCH_SZ 128
+extern int offset_in_batch;
+typedef struct {
+    uint32_t hash;
+} yield_state_t ;
+extern yield_state_t yield_state[MAX_BATCH_SZ];
+
 #endif

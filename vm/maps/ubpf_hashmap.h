@@ -46,19 +46,11 @@ void *ubpf_hashmap_lookup(const struct ubpf_map *map, const void *key);
 int ubpf_hashmap_update(struct ubpf_map *map, const void *key, void *value);
 int ubpf_hashmap_delete(struct ubpf_map *map, const void *key);
 
-
-#define __MAX_BATCH 128
-extern int __offset_in_batch;
-struct __lookup_state {
-    uint32_t hash;
-};
-
 struct hashmap {
     struct ovs_list *buckets;
     uint32_t count;
     uint32_t nb_buckets;
     uint32_t elem_size;
-    struct __lookup_state *__ls;
 };
 
 struct hmap_elem {
@@ -69,7 +61,6 @@ struct hmap_elem {
 
 
 #define BPF_KEY_IS_HASH 1
-#define GET_LOOKUP_STATE(hmap, off) {(struct __lookup_state *)((uint64_t)(hmap)->__ls + ((off) * sizeof(struct __lookup_state)))}
 
 void *
 ubpf_hashmap_create(const struct ubpf_map_def *map_def)
@@ -85,10 +76,6 @@ ubpf_hashmap_create(const struct ubpf_map_def *map_def)
     for (int i = 0; i < hmap->nb_buckets; i++) {
         ovs_list_init(&hmap->buckets[i]);
     }
-
-    const size_t __state_size = sizeof(struct __lookup_state);
-    hmap->__ls = malloc(__state_size * __MAX_BATCH);
-    assert(hmap->__ls != NULL);
 
     return hmap;
 }
@@ -171,10 +158,10 @@ ubpf_hashmap_lookup(const struct ubpf_map *map, const void *key)
 
 void ubpf_hashmap_lookup_p1(const struct ubpf_map *map, const void *key)
 {
-    int batch_off = __offset_in_batch;
+    __builtin_prefetch(key);
     uint32_t key_sz = map->key_size;
     struct hashmap *hmap = map->data;
-    struct __lookup_state *ls = GET_LOOKUP_STATE(hmap, batch_off);
+    yield_state_t *ls = &yield_state[offset_in_batch];
     /* keep a copy of the key for future comparisons */
     uint32_t hash = ubpf_hashmap_hash(key, key_sz);
     ls->hash = hash;
@@ -182,18 +169,21 @@ void ubpf_hashmap_lookup_p1(const struct ubpf_map *map, const void *key)
 
     struct hmap_elem *l;
     INIT_CONTAINER(l, head->next, hash_node);
+    /* Since the key is 8 byte after the hash and we
+     * are optimizing for 5 tuple (13) lookups, it will suffice to just fetch hash
+     * */
     __builtin_prefetch(&l->hash, 0, 3);
-    __builtin_prefetch(&l->key, 0, 2);
+    /* __builtin_prefetch(&l->key, 0, 2); */
     /* printf("prefetch: %p\n", &l->key); */
 }
 
 void *
 ubpf_hashmap_lookup_p2(const struct ubpf_map *map, void *key)
 {
-    int batch_off = __offset_in_batch;
+    __builtin_prefetch(key);
     uint32_t key_sz = map->key_size;
     struct hashmap *hmap = map->data;
-    struct __lookup_state *ls = GET_LOOKUP_STATE(hmap, batch_off);
+    yield_state_t *ls = &yield_state[offset_in_batch];
 
     struct ovs_list *head = select_bucket(hmap, ls->hash);
     struct hmap_elem *elem;
