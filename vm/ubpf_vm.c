@@ -1024,35 +1024,34 @@ void *ubpf_lookup_map(struct ubpf_map* map, void *key)
     return map->ops.map_lookup(map, key);
 }
 
+void ubpf_hashmap_lookup_p1(const struct ubpf_map *map, const void *key);
+void * ubpf_hashmap_lookup_p2(const struct ubpf_map *map, void *key);
+
 int
-ubpf_lookup_map_p1(const struct ubpf_map *map, const void *key /* input */)
+ubpf_lookup_map_p1(const struct ubpf_map *map, const void *key)
 {
-    if (!map) {
+    if (!map || !key || !map->ops.map_lookup_p1) {
         return -1;
     }
-    if (!map->ops.map_lookup_p1) {
-        return -2;
+    if (map->type == UBPF_MAP_TYPE_HASHMAP) {
+        ubpf_hashmap_lookup_p1(map, key);
+    } else {
+        map->ops.map_lookup_p1(map, key);
     }
-    if (!key) {
-        return -3;
-    }
-    map->ops.map_lookup_p1(map, key);
     return 0;
 }
 
 void *
-ubpf_lookup_map_p2(const struct ubpf_map *map, void *key /* output */)
+ubpf_lookup_map_p2(const struct ubpf_map *map, void *key)
 {
-    if (!map) {
+    if (!map || !key || !map->ops.map_lookup_p2) {
         return NULL;
     }
-    if (!map->ops.map_lookup_p2) {
-        return NULL;
+    if (map->type == UBPF_MAP_TYPE_HASHMAP) {
+        return ubpf_hashmap_lookup_p2(map, key);
+    } else {
+        return map->ops.map_lookup_p2(map, key);
     }
-    if (!key) {
-        return NULL;
-    }
-    return map->ops.map_lookup_p2(map, key);
 }
 
 int ubpf_update_map(struct ubpf_map* map, void *key, void *value)
