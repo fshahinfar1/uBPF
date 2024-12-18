@@ -166,6 +166,7 @@ void ubpf_hashmap_lookup_p1(const struct ubpf_map *map, const void *key)
     uint32_t hash = ubpf_hashmap_hash(key, key_sz);
     ls->hash = hash;
     struct ovs_list *head = select_bucket(hmap, hash);
+    ls->head = head;
 
     struct hmap_elem *l;
     INIT_CONTAINER(l, head->next, hash_node);
@@ -182,10 +183,11 @@ ubpf_hashmap_lookup_p2(const struct ubpf_map *map, void *key)
 {
     __builtin_prefetch(key);
     uint32_t key_sz = map->key_size;
-    struct hashmap *hmap = map->data;
+    /* struct hashmap *hmap = map->data; */
     yield_state_t *ls = &yield_state[offset_in_batch];
 
-    struct ovs_list *head = select_bucket(hmap, ls->hash);
+    /* struct ovs_list *head = select_bucket(hmap, ls->hash); */
+    struct ovs_list *head = ls->head;
     struct hmap_elem *elem;
     elem = lookup_elem_raw(head, ls->hash, key, key_sz);
     if (elem) {
