@@ -167,13 +167,18 @@ void ubpf_hashmap_lookup_p1(const struct ubpf_map *map, const void *key)
     ls->hash = hash;
     struct ovs_list *head = select_bucket(hmap, hash);
     ls->head = head;
+    ls->p1_flag = true;
 
-    struct hmap_elem *l;
-    INIT_CONTAINER(l, head->next, hash_node);
+    // Dereferencing bucket casues cache miss & stall do not dereference, just
+    // prefetch
+    __builtin_prefetch(head);
+
+    /* struct hmap_elem *l; */
+    /* INIT_CONTAINER(l, head->next, hash_node); */
     /* Since the key is 8 byte after the hash and we
      * are optimizing for 5 tuple (13) lookups, it will suffice to just fetch hash
      * */
-    __builtin_prefetch(&l->hash, 0, 3);
+    /* __builtin_prefetch(l, 0, 3); */
     /* __builtin_prefetch(&l->key, 0, 2); */
     /* printf("prefetch: %p\n", &l->key); */
 }

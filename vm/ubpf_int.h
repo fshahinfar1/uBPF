@@ -120,9 +120,10 @@ struct ubpf_vm {
 #define MAX_BATCH_SZ 128
 extern int offset_in_batch;
 typedef struct {
+    uint32_t p1_flag;
     uint32_t hash;
     void *head;
-} yield_state_t ;
+} yield_state_t;
 extern yield_state_t yield_state[MAX_BATCH_SZ];
 
 #endif

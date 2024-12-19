@@ -197,5 +197,6 @@ struct ubpf_map *ubpf_create_map(char *name, struct ubpf_map_def *map_def,
 int  ubpf_lookup_map_p1(const struct ubpf_map *map, const void *key /* input */);
 void *ubpf_lookup_map_p2(const struct ubpf_map *map, void *key /* output */);
 void ubpf_set_batch_offset(int off);
+int ubpf_set_batch_size(int batch);
 
 #endif

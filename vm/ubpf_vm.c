@@ -988,13 +988,42 @@ ubpf_error(const char *fmt, ...)
 /* This is used to support overlapping lookup procedure with processing of a
  * batch of packets
  * */
+static int batch_size_mask = 64 - 1;
+static int batch_size_half = 32;
 int offset_in_batch;
-yield_state_t yield_state[MAX_BATCH_SZ];
+yield_state_t yield_state[MAX_BATCH_SZ] = {};
 
+int ubpf_set_batch_size(int batch) {
+    if (batch > MAX_BATCH_SZ)
+        return -1;
+    if ((batch & (batch - 1)) != 0) {
+        // must be power of two
+        return -1;
+    }
+    batch_size_mask = batch-1;
+    batch_size_half = batch / 2;
+    return 0;
+}
+
+
+#include "utils/openvswitch/list.h"
 void ubpf_set_batch_offset(int off)
 {
     offset_in_batch = off;
-    __builtin_prefetch(yield_state + off);
+    /* __builtin_prefetch(yield_state + off); */
+
+    /* We have prefetched the bucket in phase 1, lets fetch the key now. If we
+     * fetch the key when we are at stage 2 and want to proces the 2nd-phase it
+     * might be too late. So lets overlap fetching the keys (after waiting some
+     * time so that bucket is in the cache) with fetching the bucket of other
+     * keys.
+     * */
+    uint32_t o = (off + batch_size_half) & batch_size_mask;
+    if (yield_state[o].p1_flag) {
+        struct ovs_list *ovs_list_head = yield_state[o].head;
+        /* if (ovs_list_head != NULL) */
+            __builtin_prefetch(ovs_list_head->next); // fetch next elem
+    }
 }
 
 /* Userspace map API for control-plane applications */
