@@ -908,6 +908,10 @@ validate(const struct ubpf_vm *vm, const struct ebpf_inst *insts, uint32_t num_i
             break;
 
         case EBPF_OP_CALL:
+            if (inst.imm == UBPF_PREFETCH_HELPER) {
+                /* It is okay */
+                break;
+            }
             if (inst.imm < 0 || inst.imm >= MAX_EXT_FUNCS) {
                 *errmsg = ubpf_error("invalid call immediate at PC %d", i);
                 return false;

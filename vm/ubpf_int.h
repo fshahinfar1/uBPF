@@ -108,6 +108,7 @@ struct ubpf_vm {
     size_t *jitted_size;
     ext_func *ext_funcs;
     const char **ext_func_names;
+    /* inline_func *ext_func_inline_funcs; */
     bool bounds_check_enabled;
     int (*error_printf)(FILE* stream, const char* format, ...);
     int unwind_stack_extension_index;

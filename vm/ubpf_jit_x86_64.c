@@ -432,6 +432,12 @@ translate(struct ubpf_vm *vm, struct jit_state *state,
             emit_jcc(state, 0x8e, target_pc);
             break;
         case EBPF_OP_CALL:
+            if (inst.imm == UBPF_PREFETCH_HELPER) {
+                emit2(state, 0x180F);
+                emit_modrm(state, 0, 1, map_register(1));
+                /* printf("encoding prefetch!"); */
+                break;
+            }
             /* We reserve RCX for shifts */
             emit_mov(state, RCX_ALT, RCX);
             emit_call(state, vm->ext_funcs[inst.imm]);
@@ -878,5 +884,5 @@ uint8_t *
 ubpf_dump_jitted_fn(struct ubpf_vm *vm, unsigned int *size)
 {
     *size = vm->jitted_size[0];
-    return (uint8_t *)vm->jitted;
+    return (uint8_t *)vm->jitted[0];
 }

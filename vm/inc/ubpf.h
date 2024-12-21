@@ -199,4 +199,7 @@ void *ubpf_lookup_map_p2(const struct ubpf_map *map, void *key /* output */);
 void ubpf_set_batch_offset(int off);
 int ubpf_set_batch_size(int batch);
 
+
+#define UBPF_PREFETCH_HELPER 128
+/* typedef int (*inline_func)(void *image); */
 #endif
