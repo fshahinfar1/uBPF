@@ -26,6 +26,7 @@
 #include <assert.h>
 #include "ubpf_int.h"
 #include "ubpf_jit_x86_64.h"
+#include "ubpf_debug_info.h"
 
 /* Special valus for target_pc in struct jump */
 #define TARGET_PC_EXIT -1
@@ -814,37 +815,13 @@ out:
     return result;
 }
 
-static void __report_perf_map(struct ubpf_vm *vm, uint32_t prog_index)
-{
-    int ret;
-    int pid = getpid();
-    char filename[64];
-    ret = snprintf(filename, 63, "/tmp/perf-%d.map", pid);
-    if (ret < 0 ) {
-        return;
-    }
-
-    FILE *f = fopen(filename, "a");
-    if (f == NULL)
-        return;
-
-    char line[128];
-    uint32_t size;
-    size = snprintf(line, 128, "%p %lx prog-%d\n", (void*)vm->jitted[prog_index],
-            vm->jitted_size[prog_index], prog_index);
-    if (size < 0)
-        return;
-    fwrite(line, sizeof(char), size, f);
-
-    fclose(f);
-}
-
 ubpf_jit_fn
 ubpf_compile(struct ubpf_vm *vm, uint32_t prog_index, char **errmsg)
 {
     void *jitted = NULL;
     uint8_t *buffer = NULL;
     size_t jitted_size;
+    int page_size;
 
     if (prog_index >= vm->sz_yield_chain) {
         *errmsg = ubpf_error("code has not been loaded into this VM");
@@ -870,16 +847,27 @@ ubpf_compile(struct ubpf_vm *vm, uint32_t prog_index, char **errmsg)
         goto out;
     }
 
-    // First try to use a HUGE page for the program
-    int page_size = 1 << 30;
-    jitted = mmap(0, jitted_size,
-            PROT_READ | PROT_WRITE,
-            MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0);
-    if (jitted == MAP_FAILED) {
-        page_size = jitted_size;
-        jitted = mmap(0, jitted_size,
-                PROT_READ | PROT_WRITE,
+    int fd = gen_elf_file_for_jit_code(buffer, jitted_size, prog_index);
+
+    /* First try to use a HUGE page for the program (there is no point in doing
+     * this) */
+    /* page_size = 1 << 30; */
+    /* jitted = mmap(0, jitted_size, */
+    /*         PROT_READ | PROT_WRITE, */
+    /*         MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB, -1, 0); */
+
+    page_size = jitted_size;
+    if (fd >= 0) {
+        /* NOTE: this path is WIP and is not implemented yet! */
+        goto out;
+        /* int offset = -1; */
+        /* jitted = mmap(0, jitted_size, PROT_READ | PROT_WRITE, */
+        /*         MAP_PRIVATE, fd, offset); */
+    } else {
+        jitted = mmap(0, jitted_size, PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    }
+    if (jitted == MAP_FAILED) {
         if (jitted == MAP_FAILED) {
             *errmsg = ubpf_error("internal uBPF error: mmap failed: %s\n", strerror(errno));
             goto out;
@@ -901,10 +889,9 @@ out:
     if (jitted && vm->jitted[prog_index] == NULL) {
         munmap(jitted, jitted_size);
     }
-    __report_perf_map(vm, prog_index);
+    report_perf_map(vm, prog_index);
     return vm->jitted[prog_index];
 }
-
 
 uint8_t *
 ubpf_dump_jitted_fn(struct ubpf_vm *vm, unsigned int *size)
