@@ -814,6 +814,31 @@ out:
     return result;
 }
 
+static void __report_perf_map(struct ubpf_vm *vm, uint32_t prog_index)
+{
+    int ret;
+    int pid = getpid();
+    char filename[64];
+    ret = snprintf(filename, 63, "/tmp/perf-%d.map", pid);
+    if (ret < 0 ) {
+        return;
+    }
+
+    FILE *f = fopen(filename, "a");
+    if (f == NULL)
+        return;
+
+    char line[128];
+    uint32_t size;
+    size = snprintf(line, 128, "%p %lx prog-%d\n", (void*)vm->jitted[prog_index],
+            vm->jitted_size[prog_index], prog_index);
+    if (size < 0)
+        return;
+    fwrite(line, sizeof(char), size, f);
+
+    fclose(f);
+}
+
 ubpf_jit_fn
 ubpf_compile(struct ubpf_vm *vm, uint32_t prog_index, char **errmsg)
 {
@@ -876,6 +901,7 @@ out:
     if (jitted && vm->jitted[prog_index] == NULL) {
         munmap(jitted, jitted_size);
     }
+    __report_perf_map(vm, prog_index);
     return vm->jitted[prog_index];
 }
 

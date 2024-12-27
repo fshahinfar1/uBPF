@@ -22,6 +22,7 @@
 #include <stdarg.h>
 #include <inttypes.h>
 #include <sys/mman.h>
+#include <unistd.h>
 #include "ubpf_int.h"
 
 /* From Oko: definitions */
@@ -162,6 +163,16 @@ ubpf_destroy(struct ubpf_vm *vm)
     free(vm->jitted);
     free(vm->jitted_size);
     free(vm);
+
+    // Attempt to remove the perf map file
+    int ret;
+    int pid = getpid();
+    char filename[64];
+    ret = snprintf(filename, 63, "/tmp/perf-%d.map", pid);
+    if (ret < 0 ) {
+        return;
+    }
+    remove(filename);
 }
 
 int
