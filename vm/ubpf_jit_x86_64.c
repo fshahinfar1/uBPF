@@ -24,6 +24,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <assert.h>
+#include <elf.h>
 #include "ubpf_int.h"
 #include "ubpf_jit_x86_64.h"
 #include "ubpf_debug_info.h"
@@ -858,27 +859,57 @@ ubpf_compile(struct ubpf_vm *vm, uint32_t prog_index, char **errmsg)
 
     page_size = jitted_size;
     if (fd >= 0) {
-        /* NOTE: this path is WIP and is not implemented yet! */
-        goto out;
-        /* int offset = -1; */
-        /* jitted = mmap(0, jitted_size, PROT_READ | PROT_WRITE, */
-        /*         MAP_PRIVATE, fd, offset); */
-    } else {
-        jitted = mmap(0, jitted_size, PROT_READ | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    }
-    if (jitted == MAP_FAILED) {
-        if (jitted == MAP_FAILED) {
-            *errmsg = ubpf_error("internal uBPF error: mmap failed: %s\n", strerror(errno));
+        /* /1* NOTE: this path is WIP and is not implemented yet! *1/ */
+        /* goto out; */
+        uint8_t *tmp = mmap(NULL, jitted_size,
+                PROT_READ | PROT_EXEC, MAP_PRIVATE, fd, 0);
+        // Either it si mapped or not. We do not need the descriptor any how.
+        close(fd);
+        if (tmp == MAP_FAILED) {
+            fprintf(stderr, "Failed to map the file (fd: %d) (%s)\n", fd, strerror(errno));
             goto out;
         }
-    }
+        Elf64_Ehdr *ehdr = (Elf64_Ehdr *)tmp;
+        Elf64_Phdr* phdr = (Elf64_Phdr*)(tmp + ehdr->e_phoff);
+        assert(ehdr->e_phnum >= 1);
+        assert((phdr->p_type & PT_LOAD) != 0);
+        /* printf("phnum: %d\n",ehdr->e_phnum); */
+        /* printf("phoff: %ld\n",ehdr->e_phoff); */
 
-    memcpy(jitted, buffer, jitted_size);
+        // TODO:  Fix this with proper code that goes through the sections and
+        // find the right one
+        const Elf64_Shdr *shdr = (void *)tmp + ehdr->e_shoff + (1 * ehdr->e_shentsize);
+        /* printf("%ld ?= %ld\n", shdr->sh_size, jitted_size); */
+        assert(shdr->sh_size == jitted_size);
+        size_t prog_off = shdr->sh_offset;
+        /* printf("prog offset: %ld\n", phdr[0].p_offset); */
+        tmp += prog_off;
+        for (int i = 0; i < jitted_size; i++) {
+            /* printf("%d: %x \t %x\n", i, tmp[i], buffer[i]); */
+            if(tmp[i] != buffer[i]) {
+                printf("Error: file page did not matched the code!\n");
+                goto out;
+            }
+        }
+        jitted = tmp;
+        printf("ubpf: ELF mapped: Every byte matches (%lu)\n", jitted_size);
+    } else {
+        // Original path, we have the code; allocate a memory page and copy it
+        // there. Set executable flag later.
+        jitted = mmap(0, jitted_size, PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (jitted == MAP_FAILED) {
+            if (jitted == MAP_FAILED) {
+                *errmsg = ubpf_error("internal uBPF error: mmap failed: %s\n", strerror(errno));
+                goto out;
+            }
+        }
 
-    if (mprotect(jitted, page_size, PROT_READ | PROT_EXEC) < 0) {
-        *errmsg = ubpf_error("internal uBPF error: mprotect failed: %s\n", strerror(errno));
-        goto out;
+        memcpy(jitted, buffer, jitted_size);
+        if (mprotect(jitted, page_size, PROT_READ | PROT_EXEC) < 0) {
+            *errmsg = ubpf_error("internal uBPF error: mprotect failed: %s\n", strerror(errno));
+            goto out;
+        }
     }
 
     vm->jitted[prog_index] = jitted;
