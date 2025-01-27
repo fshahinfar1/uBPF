@@ -158,7 +158,7 @@ ubpf_hashmap_lookup(const struct ubpf_map *map, const void *key)
 
 void ubpf_hashmap_lookup_p1(const struct ubpf_map *map, const void *key)
 {
-    __builtin_prefetch(key);
+    /* __builtin_prefetch(key); */
     uint32_t key_sz = map->key_size;
     struct hashmap *hmap = map->data;
     yield_state_t *ls = &yield_state[offset_in_batch];
@@ -186,7 +186,7 @@ void ubpf_hashmap_lookup_p1(const struct ubpf_map *map, const void *key)
 void *
 ubpf_hashmap_lookup_p2(const struct ubpf_map *map, void *key)
 {
-    __builtin_prefetch(key);
+    /* __builtin_prefetch(key); */
     uint32_t key_sz = map->key_size;
     /* struct hashmap *hmap = map->data; */
     yield_state_t *ls = &yield_state[offset_in_batch];

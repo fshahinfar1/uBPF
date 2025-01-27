@@ -33,7 +33,7 @@ int ubpf_load_prog(struct ubpf_vm *vm, const void *code, uint32_t code_len, uint
 #define NB_FUNC_ARGS 5
 #define MAX_SIZE_ARG 8
 
-#define MAX_YIELD_CHAIN_FUNCS 4
+#define MAX_YIELD_CHAIN_FUNCS 8
 
 struct ubpf_map_ops {
     unsigned int (*map_size)(const struct ubpf_map *map);
