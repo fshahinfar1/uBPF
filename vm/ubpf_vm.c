@@ -1044,6 +1044,10 @@ struct ubpf_map *ubpf_select_map(char *name, struct ubpf_vm *vm)
     return NULL;
 }
 
+void ubpf_hashmap_lookup_p1(const struct ubpf_map *map, const void *key);
+void * ubpf_hashmap_lookup_p2(const struct ubpf_map *map, void *key);
+void *ubpf_array_lookup(const struct ubpf_map *map, const void *key);
+
 void *ubpf_lookup_map(struct ubpf_map* map, void *key)
 {
     if (!map) {
@@ -1058,11 +1062,12 @@ void *ubpf_lookup_map(struct ubpf_map* map, void *key)
         /* printf("no key\n"); */
         return NULL;
     }
+
+    if (map->type == UBPF_MAP_TYPE_ARRAY) {
+        return ubpf_array_lookup(map, key);
+    }
     return map->ops.map_lookup(map, key);
 }
-
-void ubpf_hashmap_lookup_p1(const struct ubpf_map *map, const void *key);
-void * ubpf_hashmap_lookup_p2(const struct ubpf_map *map, void *key);
 
 int
 ubpf_lookup_map_p1(const struct ubpf_map *map, const void *key)
