@@ -848,7 +848,9 @@ ubpf_compile(struct ubpf_vm *vm, uint32_t prog_index, char **errmsg)
         goto out;
     }
 
-    int fd = gen_elf_file_for_jit_code(buffer, jitted_size, prog_index);
+    /* int fd = gen_elf_file_for_jit_code(buffer, jitted_size, prog_index); */
+    int fd = -1; /* Do not generate the ELF file it is not very useful without DWARF */
+    void * const page_addr = _UBPF_PROG_ADDR(prog_index);
 
     /* First try to use a HUGE page for the program (there is no point in doing
      * this) */
@@ -861,12 +863,12 @@ ubpf_compile(struct ubpf_vm *vm, uint32_t prog_index, char **errmsg)
     if (fd >= 0) {
         /* /1* NOTE: this path is WIP and is not implemented yet! *1/ */
         /* goto out; */
-        uint8_t *tmp = mmap(NULL, jitted_size,
-                PROT_READ | PROT_EXEC, MAP_PRIVATE, fd, 0);
+        uint8_t *tmp = mmap(page_addr, jitted_size,
+                PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_FIXED_NOREPLACE, fd, 0);
         // Either it si mapped or not. We do not need the descriptor any how.
         close(fd);
         if (tmp == MAP_FAILED) {
-            fprintf(stderr, "Failed to map the file (fd: %d) (%s)\n", fd, strerror(errno));
+            *errmsg = ubpf_error("Failed to map the file (fd: %d) (%s) [target addr: %p]\n", fd, strerror(errno), page_addr);
             goto out;
         }
         Elf64_Ehdr *ehdr = (Elf64_Ehdr *)tmp;
@@ -896,18 +898,20 @@ ubpf_compile(struct ubpf_vm *vm, uint32_t prog_index, char **errmsg)
     } else {
         // Original path, we have the code; allocate a memory page and copy it
         // there. Set executable flag later.
-        jitted = mmap(0, jitted_size, PROT_READ | PROT_WRITE,
-                MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        jitted = mmap(page_addr, jitted_size, PROT_READ | PROT_WRITE,
+                MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
         if (jitted == MAP_FAILED) {
             if (jitted == MAP_FAILED) {
-                *errmsg = ubpf_error("internal uBPF error: mmap failed: %s\n", strerror(errno));
+                *errmsg = ubpf_error("internal uBPF error: mmap failed: %s\n",
+                        strerror(errno));
                 goto out;
             }
         }
 
         memcpy(jitted, buffer, jitted_size);
         if (mprotect(jitted, page_size, PROT_READ | PROT_EXEC) < 0) {
-            *errmsg = ubpf_error("internal uBPF error: mprotect failed: %s\n", strerror(errno));
+            *errmsg = ubpf_error("internal uBPF error: mprotect failed: %s\n",
+                    strerror(errno));
             goto out;
         }
     }

@@ -202,4 +202,11 @@ int ubpf_set_batch_size(int batch);
 
 #define UBPF_PREFETCH_HELPER 128
 /* typedef int (*inline_func)(void *image); */
+
+#define MAX_SIZE_ARG 8
+/* Farbod: I am trying to statically define the virtual address for jitted
+ * programs uBPF generate. This should help with avoiding indirect function
+ * calls
+ * */
+#define _UBPF_PROG_ADDR(x) (void *)(((x) * (1LL<<16)) + (16LL * (1 << 30)))
 #endif

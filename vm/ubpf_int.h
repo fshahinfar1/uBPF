@@ -31,7 +31,6 @@ int ubpf_load_prog(struct ubpf_vm *vm, const void *code, uint32_t code_len, uint
 /* #define MAX_INSTS 65536 */
 /* #define STACK_SIZE 512 */
 #define NB_FUNC_ARGS 5
-#define MAX_SIZE_ARG 8
 
 #define MAX_YIELD_CHAIN_FUNCS 8
 
